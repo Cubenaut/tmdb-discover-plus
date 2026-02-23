@@ -14,8 +14,8 @@ const catalogSchema = new mongoose.Schema(
     source: { type: String, enum: ['tmdb', 'imdb'], default: 'tmdb' },
     filters: {
       listType: { type: String, default: 'discover' },
-      genres: [Number],
-      excludeGenres: [Number],
+      genres: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+      excludeGenres: { type: [mongoose.Schema.Types.Mixed], default: undefined },
       genreMatchMode: { type: String, default: 'any' }, // 'any' (OR) or 'all' (AND)
       yearFrom: Number,
       yearTo: Number,

@@ -47,6 +47,18 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
   const listType = filters.listType || 'discover';
   const isPreset = listType !== 'discover' && listType !== 'imdb_list';
 
+  // Emmy is TV-only; best_picture_oscar / best_director_oscar are movie-only.
+  const isMovieCatalog = (localCatalog?.type || 'movie') === 'movie';
+  const visibleAwards = useMemo(
+    () =>
+      imdbAwards.filter((award) =>
+        isMovieCatalog
+          ? award !== 'emmy'
+          : award !== 'best_picture_oscar' && award !== 'best_director_oscar'
+      ),
+    [imdbAwards, isMovieCatalog]
+  );
+
   const handleGenreToggle = useCallback(
     (genre) => {
       const current = filters.genres || [];
@@ -496,7 +508,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             <div>
               <span className="filter-label imdb-section-label">Awards Won</span>
               <div className="imdb-chip-wrap">
-                {imdbAwards.map((award) => {
+                {visibleAwards.map((award) => {
                   const selected = (filters.awardsWon || []).includes(award);
                   return (
                     <button
@@ -514,7 +526,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             <div>
               <span className="filter-label imdb-section-label">Awards Nominated</span>
               <div className="imdb-chip-wrap">
-                {imdbAwards.map((award) => {
+                {visibleAwards.map((award) => {
                   const selected = (filters.awardsNominated || []).includes(award);
                   return (
                     <button

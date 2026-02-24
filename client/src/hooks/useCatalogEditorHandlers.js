@@ -69,6 +69,11 @@ export function useCatalogEditorHandlers({
             sortBy: isImdb ? 'POPULARITY' : 'popularity.desc',
             ...(isNextMovie
               ? {
+                  // clear TV-only awards (emmy) when switching to movies
+                  awardsWon: (prev.filters?.awardsWon || []).filter((a) => a !== 'emmy'),
+                  awardsNominated: (prev.filters?.awardsNominated || []).filter(
+                    (a) => a !== 'emmy'
+                  ),
                   airDateFrom: undefined,
                   airDateTo: undefined,
                   firstAirDateFrom: undefined,
@@ -79,6 +84,13 @@ export function useCatalogEditorHandlers({
                   timezone: undefined,
                 }
               : {
+                  // clear movie-only Oscar categories when switching to series
+                  awardsWon: (prev.filters?.awardsWon || []).filter(
+                    (a) => a !== 'best_picture_oscar' && a !== 'best_director_oscar'
+                  ),
+                  awardsNominated: (prev.filters?.awardsNominated || []).filter(
+                    (a) => a !== 'best_picture_oscar' && a !== 'best_director_oscar'
+                  ),
                   includeVideo: undefined,
                   primaryReleaseYear: undefined,
                   certifications: undefined,

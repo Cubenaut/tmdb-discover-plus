@@ -78,8 +78,22 @@ export async function advancedSearch(
   if (params.countries?.length) queryParams.countries = params.countries;
   if (params.imdbCountries?.length) queryParams.countries = params.imdbCountries;
   if (params.keywords?.length) queryParams.keywords = params.keywords;
-  if (params.awardsWon?.length) queryParams.awardsWon = params.awardsWon;
-  if (params.awardsNominated?.length) queryParams.awardsNominated = params.awardsNominated;
+
+  // Emmy is TV-only; best_picture_oscar / best_director_oscar are movie-only.
+  // Passing incompatible combinations causes a 500 from the upstream API.
+  const TV_ONLY_AWARDS = new Set(['emmy']);
+  const MOVIE_ONLY_AWARDS = new Set(['best_picture_oscar', 'best_director_oscar']);
+  const filterAwardsByType = (awards: string[] | undefined): string[] | undefined => {
+    if (!awards?.length) return undefined;
+    const result = awards.filter((a) =>
+      contentType === 'series' ? !MOVIE_ONLY_AWARDS.has(a) : !TV_ONLY_AWARDS.has(a)
+    );
+    return result.length ? result : undefined;
+  };
+  const compatibleAwardsWon = filterAwardsByType(params.awardsWon);
+  const compatibleAwardsNominated = filterAwardsByType(params.awardsNominated);
+  if (compatibleAwardsWon?.length) queryParams.awardsWon = compatibleAwardsWon;
+  if (compatibleAwardsNominated?.length) queryParams.awardsNominated = compatibleAwardsNominated;
 
   const filterHash = hashFilters(queryParams);
 

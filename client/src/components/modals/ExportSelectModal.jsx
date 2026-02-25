@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Film, Tv, Award, Square, CheckSquare } from 'lucide-react';
 import { useModalA11y } from '../../hooks/useModalA11y';
 
@@ -57,7 +58,7 @@ export function ExportSelectModal({
     return <Film size={14} />;
   };
 
-  return (
+  return createPortal(
     <div
       className="modal-overlay"
       onClick={onClose}
@@ -223,6 +224,7 @@ export function ExportSelectModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

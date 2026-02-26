@@ -735,6 +735,44 @@
   color: #fff;
 }
 
+/* Buy Me A Coffee Native Button */
+.bmc-native-button {
+  display: inline-block;
+  padding: 8px 16px;
+  background-color: #FFDD00;
+  color: #000000;
+  border-radius: 12px;
+  text-decoration: none;
+  font-family: var(--font-outfit), sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  transition: all var(--transition-short) ease;
+  box-shadow: 0 4px 12px rgba(255, 221, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.bmc-native-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 221, 0, 0.3);
+  background-color: #ffea00;
+  text-decoration: none;
+  color: #000000;
+}
+
+.bmc-native-button:active {
+  transform: translateY(0);
+}
+
+.bmc-button-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bmc-icon {
+  margin-top: -2px;
+}
+
 @media (max-width: 1024px) {
   .credits-banner {
     margin-top: 12px;
@@ -742,3 +780,4 @@
     justify-content: center;
   }
 }
+

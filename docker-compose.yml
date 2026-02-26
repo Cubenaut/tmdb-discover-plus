@@ -54,9 +54,6 @@ services:
     image: postgres:15-alpine
     container_name: tmdb-discover-postgres
     restart: unless-stopped
-    profiles:
-      - postgres
-      - full
     ports:
       - '5432:5432'
     environment:
@@ -79,10 +76,6 @@ services:
     image: redis:alpine
     container_name: tmdb-discover-redis
     restart: unless-stopped
-    profiles:
-      - redis
-      - postgres
-      - full
     ports:
       - '6379:6379'
     volumes:
@@ -101,9 +94,6 @@ services:
     image: mongo:6-jammy
     container_name: tmdb-discover-mongo
     restart: unless-stopped
-    profiles:
-      - mongo
-      - full
     ports:
       - '27017:27017'
     volumes:

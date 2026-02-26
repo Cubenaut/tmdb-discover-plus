@@ -108,6 +108,26 @@ app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '100kb' }));
 app.use(compression({ threshold: 1024 }));
 
+const CSP_POLICY = {
+  'default-src': ["'self'"],
+  'script-src': ["'self'"],
+  'style-src': ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  'img-src': [
+    "'self'",
+    "https://docs.elfhosted.com",
+    "https://image.tmdb.org",
+    "https://storage.ko-fi.com",
+    "https://m.media-amazon.com",
+    "https://ia.media-imdb.com",
+    "data:"
+  ],
+  'font-src': ["'self'", "https://fonts.gstatic.com"],
+  'connect-src': ["'self'", "https://api.themoviedb.org"],
+  'frame-ancestors': ["'none'"],
+  'base-uri': ["'self'"],
+  'form-action': ["'self'"]
+};
+
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -119,23 +139,15 @@ app.use((req, res, next) => {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
   }
 
-  res.setHeader(
-    'Content-Security-Policy',
-    [
-      "default-src 'self'",
-      "script-src 'self' https://cdnjs.buymeacoffee.com",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' https://docs.elfhosted.com https://image.tmdb.org https://storage.ko-fi.com https://m.media-amazon.com https://ia.media-imdb.com data:",
-      "font-src 'self'",
-      "connect-src 'self' https://api.themoviedb.org",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; ')
-  );
+  const cspString = Object.entries(CSP_POLICY)
+    .map(([directive, sources]) => `${directive} ${sources.join(' ')}`)
+    .join('; ');
+
+  res.setHeader('Content-Security-Policy', cspString);
 
   next();
 });
+
 
 app.use(requestIdMiddleware());
 

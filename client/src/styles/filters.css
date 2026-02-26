@@ -559,10 +559,16 @@
   box-shadow: 0 0 0 2px rgba(130, 87, 229, 0.2);
 }
 
-.range-input-field::-webkit-outer-spin-button,
-.range-input-field::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+@supports not (-moz-appearance: none) {
+  .range-input-field::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .range-input-field::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }
 
 .range-input-field[type='number'] {
@@ -609,10 +615,16 @@
 }
 
 /* Hide number spinners (up/down arrows) */
-.range-slider-value-input::-webkit-outer-spin-button,
-.range-slider-value-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+@supports not (-moz-appearance: none) {
+  .range-slider-value-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .range-slider-value-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }
 
 .range-slider-value-input[type='number'] {

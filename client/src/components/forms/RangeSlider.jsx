@@ -29,7 +29,9 @@ export function RangeSlider({ label, min, max, step, value, onChange }) {
     }
 
     let newMin = Math.max(min, Math.min(parsed, value[1]));
-    newMin = Math.round(newMin / step) * step;
+    const decimals = step.toString().split('.')[1]?.length || 0;
+    const multiplier = Math.pow(10, Math.max(decimals, 0));
+    newMin = Math.round(newMin * multiplier) / multiplier;
 
     setMinInputValue(String(newMin));
     onChange([newMin, value[1]]);
@@ -46,7 +48,9 @@ export function RangeSlider({ label, min, max, step, value, onChange }) {
     }
 
     let newMax = Math.min(max, Math.max(parsed, value[0]));
-    newMax = Math.round(newMax / step) * step;
+    const decimals = step.toString().split('.')[1]?.length || 0;
+    const multiplier = Math.pow(10, Math.max(decimals, 0));
+    newMax = Math.round(newMax * multiplier) / multiplier;
 
     setMaxInputValue(String(newMax));
     onChange([value[0], newMax]);
@@ -54,9 +58,11 @@ export function RangeSlider({ label, min, max, step, value, onChange }) {
 
   const handleMinKeyDown = (e) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       commitMinValue();
       e.target.blur();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setMinInputValue(String(value[0]));
       setIsEditingMin(false);
       e.target.blur();
@@ -65,9 +71,11 @@ export function RangeSlider({ label, min, max, step, value, onChange }) {
 
   const handleMaxKeyDown = (e) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       commitMaxValue();
       e.target.blur();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setMaxInputValue(String(value[1]));
       setIsEditingMax(false);
       e.target.blur();
@@ -178,7 +186,9 @@ export function SingleSlider({ label, tooltip, min, max, step = 1, value = min, 
     }
 
     let newVal = Math.max(min, Math.min(max, parsed));
-    newVal = Math.round(newVal / step) * step;
+    const decimals = step.toString().split('.')[1]?.length || 0;
+    const multiplier = Math.pow(10, Math.max(decimals, 0));
+    newVal = Math.round(newVal * multiplier) / multiplier;
 
     setInputValue(String(newVal));
     onChange(newVal);
@@ -186,9 +196,11 @@ export function SingleSlider({ label, tooltip, min, max, step = 1, value = min, 
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       commitValue();
       e.target.blur();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setInputValue(String(value));
       setIsEditing(false);
       e.target.blur();

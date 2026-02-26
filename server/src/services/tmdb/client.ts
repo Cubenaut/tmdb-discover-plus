@@ -292,15 +292,21 @@ async function _tmdbFetchInner(url: URL, cacheKey: string, retries: number): Pro
   }
 
   const errorType = classifyError(lastError!, lastError!.statusCode) as CacheErrorType;
-  try {
-    await cache.setError(cacheKey, errorType, lastError!.message);
-    metrics.trackError(errorType);
-  } catch (e) {
-    log.debug('Failed to cache error response', {
-      cacheKey: cacheKey.slice(0, 60),
-      error: (e as Error).message,
-    });
+
+  // Never cache auth errors (401/403) globally — they are API-key-specific.
+  // Caching them would block valid users from getting results for up to 30 minutes.
+  const isAuthError = lastError!.statusCode === 401 || lastError!.statusCode === 403;
+  if (!isAuthError) {
+    try {
+      await cache.setError(cacheKey, errorType, lastError!.message);
+    } catch (e) {
+      log.debug('Failed to cache error response', {
+        cacheKey: cacheKey.slice(0, 60),
+        error: (e as Error).message,
+      });
+    }
   }
+  metrics.trackError(errorType);
 
   throw lastError;
 }

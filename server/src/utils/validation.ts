@@ -168,6 +168,7 @@ const IMDB_ALLOWED_KEYS = [
   'countries',
   'imdbCountries',
   'keywords',
+  'excludeKeywords',
   'awardsWon',
   'awardsNominated',
   'types',

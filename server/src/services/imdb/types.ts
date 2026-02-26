@@ -312,6 +312,7 @@ export interface ImdbAdvancedSearchParams {
   countries?: string[];
   imdbCountries?: string[];
   keywords?: string[];
+  excludeKeywords?: string[];
   awardsWon?: string[];
   awardsNominated?: string[];
   limit?: number;
@@ -336,6 +337,7 @@ export interface ImdbCatalogFilters {
   languages?: string[];
   countries?: string[];
   keywords?: string[];
+  excludeKeywords?: string[];
   awardsWon?: string[];
   awardsNominated?: string[];
   types?: ImdbTitleType[];

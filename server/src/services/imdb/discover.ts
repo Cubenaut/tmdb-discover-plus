@@ -78,7 +78,8 @@ export async function advancedSearch(
   if (params.languages?.length) queryParams.languages = params.languages;
   if (params.countries?.length) queryParams.countries = params.countries;
   if (params.imdbCountries?.length) queryParams.countries = params.imdbCountries;
-  if (params.keywords?.length) queryParams.keywords = params.keywords;
+  if (params.keywords?.length) queryParams.keywords = params.keywords.join(',');
+  if (params.excludeKeywords?.length) queryParams.excludeKeywords = params.excludeKeywords.join(',');
 
   // Emmy is TV-only; best_picture_oscar / best_director_oscar are movie-only.
   // Passing incompatible combinations causes a 500 from the upstream API.

@@ -344,6 +344,7 @@ async function handleImdbCatalogRequest(
           languages: effectiveFilters.languages,
           imdbCountries: effectiveFilters.imdbCountries,
           keywords: effectiveFilters.keywords,
+          excludeKeywords: effectiveFilters.excludeKeywords,
           awardsWon: effectiveFilters.awardsWon,
           awardsNominated: effectiveFilters.awardsNominated,
         };

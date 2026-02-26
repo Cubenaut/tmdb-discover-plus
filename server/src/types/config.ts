@@ -66,7 +66,7 @@ export interface CatalogFilters {
   withPeople?: string;
   withCompanies?: string;
   withKeywords?: string;
-  excludeKeywords?: string;
+  excludeKeywords?: string | string[];
   excludeCompanies?: string;
   watchRegion?: string;
   watchProviders?: number[];

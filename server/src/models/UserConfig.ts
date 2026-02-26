@@ -51,7 +51,7 @@ const catalogSchema = new mongoose.Schema(
       withPeople: String,
       withCompanies: String,
       withKeywords: String,
-      excludeKeywords: String,
+      excludeKeywords: mongoose.Schema.Types.Mixed,
       watchRegion: String,
       watchProviders: [Number],
       watchMonetizationType: String,

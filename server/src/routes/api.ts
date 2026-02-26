@@ -534,6 +534,7 @@ router.post('/imdb/preview', requireAuth, async (req, res) => {
         languages: filters.languages,
         imdbCountries: filters.imdbCountries,
         keywords: filters.keywords,
+        excludeKeywords: filters.excludeKeywords,
         awardsWon: filters.awardsWon,
         awardsNominated: filters.awardsNominated,
       };

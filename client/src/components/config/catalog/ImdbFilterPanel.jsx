@@ -13,7 +13,6 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
   localCatalog,
   onFiltersChange,
   imdbGenres = [],
-  imdbKeywords = [],
   imdbAwards = [],
   imdbSortOptions = [],
   imdbTitleTypes = [],
@@ -32,6 +31,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
   });
 
   const [keywordInput, setKeywordInput] = useState('');
+  const [excludeKeywordInput, setExcludeKeywordInput] = useState('');
 
   const localExpandedSections = expandedSections || internalSections;
 
@@ -104,19 +104,38 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     [filters.keywords, onFiltersChange]
   );
 
-  const handleAddKeyword = useCallback(
-    (e) => {
-      e.preventDefault();
-      const kw = keywordInput.trim();
-      if (!kw) return;
-      const current = filters.keywords || [];
-      if (!current.includes(kw)) {
-        onFiltersChange('keywords', [...current, kw]);
-      }
-      setKeywordInput('');
+  const handleAddKeyword = (e) => {
+    e.preventDefault();
+    const kw = keywordInput.trim();
+    if (!kw) return;
+    const current = filters.keywords || [];
+    if (!current.includes(kw)) {
+      onFiltersChange('keywords', [...current, kw]);
+    }
+    setKeywordInput('');
+  };
+
+  const handleExcludeKeywordToggle = useCallback(
+    (keyword) => {
+      const current = filters.excludeKeywords || [];
+      const next = current.includes(keyword)
+        ? current.filter((k) => k !== keyword)
+        : [...current, keyword];
+      onFiltersChange('excludeKeywords', next);
     },
-    [keywordInput, filters.keywords, onFiltersChange]
+    [filters.excludeKeywords, onFiltersChange]
   );
+
+  const handleAddExcludeKeyword = (e) => {
+    e.preventDefault();
+    const kw = excludeKeywordInput.trim();
+    if (!kw) return;
+    const current = filters.excludeKeywords || [];
+    if (!current.includes(kw)) {
+      onFiltersChange('excludeKeywords', [...current, kw]);
+    }
+    setExcludeKeywordInput('');
+  };
 
   const handleAwardToggle = useCallback(
     (field, award) => {
@@ -529,9 +548,10 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
         icon={Tag}
         isOpen={localExpandedSections.keywords}
         onToggle={toggleSection}
-        badgeCount={(filters.keywords || []).length}
+        badgeCount={(filters.keywords || []).length + (filters.excludeKeywords || []).length}
       >
-        <div className="filter-group">
+        <div className="filter-group mb-4">
+          <LabelWithTooltip label="Include Keywords" tooltip="Results must match these keywords." />
           <form className="flex gap-2" onSubmit={handleAddKeyword}>
             <input
               type="text"
@@ -552,10 +572,46 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
               {filters.keywords.map((kw) => (
                 <button
-                  key={kw}
+                  key={`include-${kw}`}
                   type="button"
                   className="genre-chip selected imdb-chip--clickable flex items-center gap-1"
                   onClick={() => handleKeywordToggle(kw)}
+                  title={`Remove ${kw}`}
+                >
+                  {kw} <span className="opacity-70">&times;</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="filter-group mt-6">
+          <LabelWithTooltip label="Exclude Keywords" tooltip="Results must NOT match these keywords." />
+          <form className="flex gap-2" onSubmit={handleAddExcludeKeyword}>
+            <input
+              type="text"
+              className="input flex-1"
+              placeholder="e.g. anime, musical..."
+              value={excludeKeywordInput}
+              onChange={(e) => setExcludeKeywordInput(e.target.value)}
+            />
+            <button 
+              type="submit" 
+              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded transition-colors text-sm font-medium"
+              disabled={!excludeKeywordInput.trim()}
+            >
+              Exclude
+            </button>
+          </form>
+          {(filters.excludeKeywords || []).length > 0 && (
+            <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
+              {filters.excludeKeywords.map((kw) => (
+                <button
+                  key={`exclude-${kw}`}
+                  type="button"
+                  className="genre-chip excluded imdb-chip--clickable flex items-center gap-1"
+                  style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                  onClick={() => handleExcludeKeywordToggle(kw)}
                   title={`Remove ${kw}`}
                 >
                   {kw} <span className="opacity-70">&times;</span>

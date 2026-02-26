@@ -81,8 +81,7 @@ export async function advancedSearch(
   if (params.keywords?.length)
     queryParams.keywords = params.keywords.map((k) => k.replace(/\s+/g, '-'));
   if (params.excludeKeywords?.length)
-    queryParams.excludeKeywords = params.excludeKeywords
-      .map((k) => k.replace(/\s+/g, '-'));
+    queryParams.excludeKeywords = params.excludeKeywords.map((k) => k.replace(/\s+/g, '-'));
 
   // Emmy is TV-only; best_picture_oscar / best_director_oscar are movie-only.
   // Passing incompatible combinations causes a 500 from the upstream API.

@@ -100,8 +100,15 @@ export async function imdbFetch(
 
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null || value === '') return;
+    
     if (Array.isArray(value)) {
-      url.searchParams.set(key, value.map(String).join(','));
+      if (value.length === 0) return;
+      
+      if (key === 'keywords' || key === 'excludeKeywords') {
+        url.searchParams.set(key, value.map(String).join(','));
+      } else {
+        value.forEach((v) => url.searchParams.append(key, String(v)));
+      }
     } else {
       url.searchParams.set(key, String(value));
     }

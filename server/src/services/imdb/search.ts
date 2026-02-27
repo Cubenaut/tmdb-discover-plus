@@ -15,7 +15,7 @@ export async function search(
   };
   if (types?.length) params.types = types;
   params.sortBy = 'POPULARITY';
-  params.sortOrder = 'ASC';
+  params.sortOrder = 'DESC';
   const data = (await imdbFetch('/api/imdb/search/advanced', params, ttl)) as ImdbSearchResult;
   return data;
 }

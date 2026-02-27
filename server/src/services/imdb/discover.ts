@@ -61,7 +61,7 @@ export async function advancedSearch(
 
   if (params.query) queryParams.query = params.query;
   queryParams.sortBy = params.sortBy || 'POPULARITY';
-  queryParams.sortOrder = params.sortOrder || 'ASC';
+  queryParams.sortOrder = params.sortOrder || 'DESC';
   queryParams.limit = params.limit || 100;
 
   const types = params.types?.length ? params.types : mapContentTypeToImdbTypes(contentType);

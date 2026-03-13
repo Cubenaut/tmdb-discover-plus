@@ -6,8 +6,7 @@
 .filter-section-title {
   font-size: 0.8125rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.25px;
   color: var(--text-muted);
   margin-bottom: 12px;
 }
@@ -85,6 +84,7 @@
   font-size: 0.9375rem;
   font-weight: 600;
   margin: 0;
+  text-transform: capitalize;
 }
 
 .filter-section-desc {
@@ -132,7 +132,7 @@
   grid-column: 1 / -1;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .filter-grid .span-2 {
     grid-column: span 1;
   }
@@ -1209,7 +1209,7 @@
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   .imdb-source-toggle button {
     padding: 6px 12px;
     font-size: 0.75rem;

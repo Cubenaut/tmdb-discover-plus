@@ -21,6 +21,11 @@ interface RawRankingResponse {
 
 const log = createLogger('imdb:discover');
 
+function roundTo(value: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
 function buildCursorCacheKey(filterHash: string, skip: number): string {
   return `imdb:cursor:${filterHash}:skip${skip}`;
 }
@@ -59,13 +64,24 @@ export async function advancedSearch(
 
   const queryParams: Record<string, string | number | boolean | string[] | undefined> = {};
 
+  const hasInTheatersLocation =
+    contentType === 'movie' &&
+    params.inTheatersLat != null &&
+    params.inTheatersLong != null &&
+    Number.isFinite(Number(params.inTheatersLat)) &&
+    Number.isFinite(Number(params.inTheatersLong));
+
   if (params.query) queryParams.query = params.query;
   queryParams.sortBy = params.sortBy || 'POPULARITY';
   queryParams.sortOrder = params.sortOrder || 'DESC';
   queryParams.limit = params.limit || 100;
 
   const types = params.types?.length ? params.types : mapContentTypeToImdbTypes(contentType);
-  queryParams.types = types;
+  queryParams.types = hasInTheatersLocation
+    ? types.filter((t) => t === 'movie').length > 0
+      ? types.filter((t) => t === 'movie')
+      : ['movie']
+    : types;
 
   if (params.genres?.length) queryParams.genres = params.genres;
   if (params.excludeGenres?.length) queryParams.excludeGenres = params.excludeGenres;
@@ -100,6 +116,65 @@ export async function advancedSearch(
   const compatibleAwardsNominated = filterAwardsByType(params.awardsNominated);
   if (compatibleAwardsWon?.length) queryParams.awardsWon = compatibleAwardsWon;
   if (compatibleAwardsNominated?.length) queryParams.awardsNominated = compatibleAwardsNominated;
+
+  const filterRankedListsByType = (lists: string[] | undefined): string[] | undefined => {
+    if (!lists?.length) return undefined;
+    const result =
+      contentType === 'series'
+        ? lists.filter((l) => l === 'TOP_250_TV')
+        : lists.filter((l) => l !== 'TOP_250_TV');
+    return result.length ? result : undefined;
+  };
+  const compatibleRankedList =
+    params.rankedList &&
+    (contentType === 'series'
+      ? params.rankedList === 'TOP_250_TV'
+      : params.rankedList !== 'TOP_250_TV')
+      ? params.rankedList
+      : undefined;
+  const compatibleRankedLists = filterRankedListsByType(params.rankedLists);
+  const compatibleExcludeRankedLists = filterRankedListsByType(params.excludeRankedLists);
+
+  // Phase 1: Companies, People, In Theatres, Certificates
+  if (params.companies?.length) queryParams.companies = params.companies;
+  if (params.excludeCompanies?.length) queryParams.excludeCompanies = params.excludeCompanies;
+  if (params.creditedNames?.length) queryParams.creditedNames = params.creditedNames;
+
+  if (hasInTheatersLocation) {
+    const lat = roundTo(Number(params.inTheatersLat), 2);
+    const long = roundTo(Number(params.inTheatersLong), 2);
+    queryParams.inTheatersLat = roundTo(lat - 0.1, 2);
+    queryParams.inTheatersLong = roundTo(long - 0.1, 2);
+
+    const radius = Number(params.inTheatersRadius);
+    queryParams.inTheatersRadius = Number.isFinite(radius) && radius > 0 ? radius : 50000;
+  }
+
+  if (params.certificateRating) queryParams.certificateRating = params.certificateRating;
+  if (params.certificateCountry) queryParams.certificateCountry = params.certificateCountry;
+  if (params.certificates?.length) queryParams.certificates = params.certificates;
+  if (params.explicitContent) {
+    queryParams.explicitContent = params.explicitContent === 'EXCLUDE' ? 'false' : 'true';
+  }
+
+  // Phase 2: Ranked Lists, Plot, Filming Locations
+  if (compatibleRankedList) queryParams.rankedList = compatibleRankedList;
+  if (compatibleRankedLists?.length) queryParams.rankedLists = compatibleRankedLists;
+  if (compatibleExcludeRankedLists?.length)
+    queryParams.excludeRankedLists = compatibleExcludeRankedLists;
+  if (params.rankedListMaxRank) queryParams.rankedListMaxRank = params.rankedListMaxRank;
+  if (params.plot?.length) {
+    queryParams.plot = typeof params.plot === 'string' ? [params.plot] : params.plot;
+  }
+  if (params.filmingLocations?.length) {
+    queryParams.filmingLocations =
+      typeof params.filmingLocations === 'string'
+        ? [params.filmingLocations]
+        : params.filmingLocations;
+  }
+
+  // Phase 3: Metadata Availability
+  if (params.withData?.length) queryParams.withData = params.withData;
 
   const filterHash = hashFilters(queryParams);
 

@@ -18,7 +18,9 @@ import {
   EyeOff,
   Settings,
   LayoutList,
+  Coffee,
 } from 'lucide-react';
+import { DiscordIcon } from '../social/DiscordButton.jsx';
 import { useState, useEffect, lazy, Suspense, memo } from 'react';
 
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -126,8 +128,33 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
             onClick={onAddCatalog}
             title="Add custom catalog"
           >
-            <Plus size={16} />
+            <Plus size={16} /> <span>New Catalog</span>
           </button>
+        </div>
+      </div>
+
+      <div className="sidebar-support sidebar-support--top">
+        <div className="sidebar-support-links">
+          <a
+            href="https://discord.gg/X2N3btmEG2"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="sidebar-support-btn sidebar-support-discord"
+            title="Join our Discord community"
+          >
+            <DiscordIcon className="sidebar-support-icon" />
+            <span>Discord</span>
+          </a>
+          <a
+            href="https://buymeacoffee.com/semi.column"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="sidebar-support-btn sidebar-support-bmc"
+            title="Buy me a coffee"
+          >
+            <Coffee size={14} />
+            <span>Buy me a coffee</span>
+          </a>
         </div>
       </div>
 
@@ -395,6 +422,7 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
           </div>
         </>
       )}
+
       {showImportModal && importData && (
         <ImportSelectModal
           isOpen={showImportModal}

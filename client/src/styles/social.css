@@ -1,114 +1,97 @@
 /* ========================================
-   Social Buttons (Discord, Ko-Fi)
+   Sidebar Support Footer
    ======================================== */
-.discord-button {
-  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.2);
-  line-height: 36px !important;
-  min-width: 130px;
-  display: inline-flex !important;
+.sidebar-support {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.sidebar-support--top {
+  margin-top: 0;
+  margin-bottom: 4px;
+  padding-top: 0;
+  padding-bottom: 12px;
+  border-top: none;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-support-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sidebar-support-btn {
+  display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #5865f2;
-  padding: 2px 12px !important;
-  text-align: center !important;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 7px 10px;
   border-radius: var(--radius-md);
-  color: #fff;
-  cursor: pointer;
-  overflow-wrap: break-word;
-  vertical-align: middle;
-  border: 0 none #fff !important;
-  font-family:
-    'Quicksand',
-    Helvetica,
-    Century Gothic,
-    sans-serif !important;
+  font-size: 0.75rem;
+  font-weight: 600;
   text-decoration: none;
-  text-shadow: none;
-  font-weight: 700 !important;
-  font-size: 0.875rem !important;
-  height: 36px;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  white-space: nowrap;
 }
 
-.discord-button:hover {
-  opacity: 0.85;
-  color: #fff !important;
-  text-decoration: none !important;
+.sidebar-support-btn:hover {
+  transform: translateY(-1px);
+  text-decoration: none;
 }
 
-.discord-icon {
-  display: initial;
-  vertical-align: middle;
-  height: 14px !important;
-  width: 18px !important;
-  padding: 0 !important;
-  margin: 0 8px 0 0 !important;
-  border: none;
+.sidebar-support-discord {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15), rgba(88, 101, 242, 0.25));
+  color: #a4b0ff;
+  border: 1px solid rgba(88, 101, 242, 0.4);
 }
 
-.discord-text {
-  color: #fff !important;
-  letter-spacing: -0.15px !important;
-  text-wrap: nowrap !important;
-  vertical-align: middle !important;
-  line-height: 33px !important;
-  padding: 0 !important;
-  text-align: center;
-  text-decoration: none !important;
-  text-shadow: 0 1px 1px rgba(34, 34, 34, 0.05);
+.sidebar-support-discord:hover {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.25), rgba(88, 101, 242, 0.35));
+  color: #fff;
+  border: 1px solid rgba(88, 101, 242, 0.6);
+  box-shadow: 0 4px 12px rgba(88, 101, 242, 0.3);
 }
 
-.kofi-button {
-  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.2);
-  line-height: 36px !important;
-  min-width: 150px;
-  display: inline-flex !important;
-  align-items: center;
+.sidebar-support-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sidebar-support-bmc {
+  background: linear-gradient(135deg, rgba(255, 221, 0, 0.15), rgba(255, 129, 63, 0.2));
+  color: #ffd700;
+  border: 1px solid rgba(255, 221, 0, 0.4);
+}
+
+.sidebar-support-bmc:hover {
+  background: linear-gradient(135deg, rgba(255, 221, 0, 0.25), rgba(255, 129, 63, 0.3));
+  color: #fff;
+  border: 1px solid rgba(255, 221, 0, 0.6);
+  box-shadow: 0 4px 12px rgba(255, 129, 63, 0.3);
+}
+
+/* Setup / Login support row */
+.setup-support-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.setup-support-row .sidebar-support-btn {
+  flex: 1;
   justify-content: center;
-  background-color: #72a4f2;
-  padding: 2px 12px !important;
-  text-align: center !important;
-  border-radius: var(--radius-md);
-  color: #fff;
-  cursor: pointer;
-  overflow-wrap: break-word;
-  vertical-align: middle;
-  border: 0 none #fff !important;
-  font-family:
-    'Quicksand',
-    Helvetica,
-    Century Gothic,
-    sans-serif !important;
-  text-decoration: none;
-  text-shadow: none;
-  font-weight: 700 !important;
-  font-size: 0.875rem !important;
-  height: 36px;
 }
 
-.kofi-button:hover {
-  opacity: 0.85;
-  color: #fff !important;
-  text-decoration: none !important;
-}
-
-.kofiimg {
-  display: initial;
-  vertical-align: middle;
-  height: 13px !important;
-  width: 20px !important;
-  padding: 0 !important;
-  margin: 0 5px 0 0 !important;
-  border: none;
-}
-
-.kofitext {
-  color: #fff !important;
-  letter-spacing: -0.15px !important;
-  text-wrap: nowrap !important;
-  vertical-align: middle !important;
-  line-height: 33px !important;
-  padding: 0 !important;
-  text-align: center;
-  text-decoration: none !important;
-  text-shadow: 0 1px 1px rgba(34, 34, 34, 0.05);
+@media (max-width: 767px) {
+  .setup-support-row {
+    margin-top: 6px;
+  }
 }

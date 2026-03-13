@@ -1,7 +1,15 @@
 .app {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .app {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
 }
 
 .skip-to-content {
@@ -151,6 +159,15 @@
   margin-left: -8px;
 }
 
+@media (min-width: 1024px) {
+  .header-stats {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-left: 0;
+  }
+}
+
 .logo h1 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -214,27 +231,7 @@
   border-radius: 20px;
 }
 
-.discord-icon-circle {
-  background-color: #5865f2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  color: white;
-}
-
-.discord-icon-sm {
-  width: 18px;
-  height: 14px;
-  fill: white;
-}
-
 .header-stats {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -246,6 +243,7 @@
   color: var(--text-secondary);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  margin-left: 24px;
 }
 
 .stats-item {
@@ -264,7 +262,7 @@
   opacity: 0.5;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
   .header-stats {
     display: none;
   }
@@ -368,6 +366,9 @@
 .main {
   flex: 1;
   padding: 32px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Setup Page */
@@ -504,18 +505,40 @@
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+  flex: 1; /* allow spreading in parent flex */
 }
 
 /* Tablet: Side by side layout */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .builder-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 16px;
+    min-height: 0;
+    max-height: none;
+    align-items: stretch;
+    margin-bottom: 24px; /* iPad bottom gap */
+  }
+}
+
+/* Base Desktop Layout */
 @media (min-width: 1024px) {
   .builder-layout {
     display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 20px;
+    max-height: none; /* Let the dVH control it */
+    align-items: stretch;
+    min-height: 0;
+    margin-bottom: 0;
+  }
+}
+
+/* Medium Desktop */
+@media (min-width: 1200px) {
+  .builder-layout {
     grid-template-columns: 280px 1fr;
     gap: 24px;
-    height: calc(100vh - 160px);
-    max-height: 850px; /* Limit height on very tall laptop screens but keep it functional */
-    align-items: stretch;
-    min-height: 600px;
   }
 }
 
@@ -523,7 +546,6 @@
 @media (min-width: 1400px) {
   .builder-layout {
     grid-template-columns: 320px 1fr;
-    height: calc(100vh - 180px); /* Slightly more padding for ultra large */
   }
 }
 
@@ -691,55 +713,59 @@
 .credits-banner {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 6px 16px;
+  gap: 16px;
+  padding: 12px 20px;
   background: var(--bg-tertiary);
   border: 1px solid rgba(114, 164, 242, 0.2);
-  border-radius: var(--radius-full);
-  font-size: 0.8125rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
   color: var(--text-secondary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   animation: fadeIn var(--transition-normal) ease;
   transition: all var(--transition-short) ease;
-  white-space: nowrap;
+  max-width: 600px;
 }
 
 .credits-banner:hover {
-  background: rgba(114, 164, 242, 0.05);
+  background: rgba(114, 164, 242, 0.03);
   border-color: rgba(114, 164, 242, 0.4);
 }
 
 .credits-banner-logo {
-  height: 16px;
-  width: auto;
+  height: 64px;
+  width: 64px;
   object-fit: contain;
+  flex-shrink: 0;
 }
 
-.credits-banner-subtitle {
+.credits-banner-content {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 4px;
-  line-height: 1;
+  line-height: 1.5;
 }
 
-.credits-banner-subtitle a {
-  color: var(--accent-light);
+.credits-banner-content p {
+  margin: 0;
+}
+
+.credits-banner-content a {
+  color: #ffdd00;
   text-decoration: none;
-  font-weight: 600;
-  transition: color var(--transition-short) ease;
+  font-weight: 700;
+  transition: opacity var(--transition-short) ease;
 }
 
-.credits-banner-subtitle a:hover {
+.credits-banner-content a:hover {
   text-decoration: underline;
-  color: #fff;
+  opacity: 0.8;
 }
 
 /* Buy Me A Coffee Native Button */
 .bmc-native-button {
   display: inline-block;
   padding: 8px 16px;
-  background-color: #FFDD00;
+  background-color: #ffdd00;
   color: #000000;
   border-radius: 12px;
   text-decoration: none;
@@ -773,11 +799,10 @@
   margin-top: -2px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023px) {
   .credits-banner {
     margin-top: 12px;
     width: 100%;
     justify-content: center;
   }
 }
-

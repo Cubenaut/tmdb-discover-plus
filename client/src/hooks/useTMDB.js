@@ -14,6 +14,7 @@ const initialState = {
   tvTypes: [],
   monetizationTypes: [],
   certifications: { movie: {}, series: {} },
+  certificateRatingsByCountry: {},
   watchRegions: [],
   tvNetworks: [],
   imdbEnabled: false,
@@ -50,6 +51,7 @@ function reducer(state, action) {
         tvTypes: action.payload.tvTypes || [],
         monetizationTypes: action.payload.monetizationTypes || [],
         certifications: action.payload.certifications || initialState.certifications,
+        certificateRatingsByCountry: action.payload.certificateRatingsByCountry || {},
         watchRegions: action.payload.watchRegions || [],
         tvNetworks: action.payload.tvNetworks || [],
         imdbEnabled: imdbData.enabled || false,
@@ -59,7 +61,8 @@ function reducer(state, action) {
         imdbSortOptions: imdbData.sortOptions || [],
         imdbTitleTypes: imdbData.titleTypes || [],
         imdbPresetCatalogs: imdbData.presetCatalogs || [],
-        imdbCertificateRatings: imdbData.certificateRatings || {},
+        imdbCertificateRatings:
+          action.payload.certificateRatingsByCountry || imdbData.certificateRatings || {},
         imdbRankedLists: imdbData.rankedLists || [],
         imdbWithDataOptions: imdbData.withDataOptions || [],
         loading: false,
@@ -240,8 +243,11 @@ export function useTMDB(apiKey) {
         displayName: c.displayName,
         lat: c.lat,
         lon: c.lon,
+        state: c.state,
         country: c.country,
         countryCode: c.countryCode,
+        locationLabel: c.locationLabel,
+        knownFor: c.locationLabel || [c.state, c.country].filter(Boolean).join(', '),
       }));
     },
     [hasAuth]

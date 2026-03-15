@@ -17,6 +17,7 @@ import {
   FileText,
   Database,
 } from 'lucide-react';
+import { CertificationCountryFilter } from '../../forms/CertificationCountryFilter';
 import { SearchableSelect } from '../../forms/SearchableSelect';
 import { SearchInput } from '../../forms/SearchInput';
 import { RangeSlider, SingleSlider } from '../../forms/RangeSlider';
@@ -24,7 +25,7 @@ import { LabelWithTooltip } from '../../forms/Tooltip';
 
 // TODO: Awards section hidden until upstream API compatibility is resolved. Set to false to re-enable.
 const AWARDS_HIDDEN = false;
-const MAX_RANK_HIDDEN = true;
+const MAX_RANK_HIDDEN = false;
 
 export const ImdbFilterPanel = memo(function ImdbFilterPanel({
   localCatalog,
@@ -110,10 +111,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
   );
 
   const visibleRankedLists = useMemo(
-    () =>
-      imdbRankedLists.filter((list) =>
-        isMovieCatalog ? list.value !== 'TOP_250_TV' : list.value === 'TOP_250_TV'
-      ),
+    () => (isMovieCatalog ? imdbRankedLists : []),
     [imdbRankedLists, isMovieCatalog]
   );
 
@@ -135,6 +133,55 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
 
   const rankInputValue =
     rankInputDraft ?? (filters.rankedListMaxRank ? String(filters.rankedListMaxRank) : '');
+
+  const activeIncludeRankType = filters.rankedList || (filters.rankedLists || [])[0] || '';
+  const activeExcludeRankType = (filters.excludeRankedLists || [])[0] || '';
+  const activeRankMode = activeExcludeRankType ? 'EXCLUDE' : 'INCLUDE';
+  const activeRankType =
+    activeExcludeRankType ||
+    activeIncludeRankType ||
+    visibleRankedLists.find((list) => list.value === 'TOP_250')?.value ||
+    visibleRankedLists[0]?.value ||
+    '';
+
+  const rankModeOptions = useMemo(
+    () => [
+      { value: 'INCLUDE', label: 'Include' },
+      { value: 'EXCLUDE', label: 'Exclude' },
+    ],
+    []
+  );
+
+  const rankedRangePresets = useMemo(
+    () => [
+      { value: 100, label: '100' },
+      { value: 250, label: '250' },
+      { value: 1000, label: '1000' },
+      { value: 5000, label: '5000' },
+    ],
+    []
+  );
+
+  const applyRankConstraint = useCallback(
+    ({ mode, type, maxRank }) => {
+      if (!isMovieCatalog || !type) return;
+
+      if (mode === 'EXCLUDE') {
+        onFiltersChange('rankedList', undefined);
+        onFiltersChange('rankedLists', []);
+        onFiltersChange('excludeRankedLists', [type]);
+      } else {
+        onFiltersChange('rankedList', type);
+        onFiltersChange('rankedLists', [type]);
+        onFiltersChange('excludeRankedLists', []);
+      }
+
+      if (typeof maxRank === 'number' && Number.isFinite(maxRank)) {
+        onFiltersChange('rankedListMaxRank', Math.max(Math.trunc(maxRank), 1));
+      }
+    },
+    [isMovieCatalog, onFiltersChange]
+  );
 
   const handleTriStateGenreClick = useCallback(
     (genreId) => {
@@ -170,8 +217,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     [filters.keywords, onFiltersChange]
   );
 
-  const handleAddKeyword = (e) => {
-    e.preventDefault();
+  const handleAddKeyword = () => {
     const kw = keywordInput.trim();
     if (!kw) return;
     const current = filters.keywords || [];
@@ -192,8 +238,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     [filters.excludeKeywords, onFiltersChange]
   );
 
-  const handleAddExcludeKeyword = (e) => {
-    e.preventDefault();
+  const handleAddExcludeKeyword = () => {
     const kw = excludeKeywordInput.trim();
     if (!kw) return;
     const current = filters.excludeKeywords || [];
@@ -202,6 +247,12 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     }
     setExcludeKeywordInput('');
   };
+
+  const handleEnterToAdd = useCallback((event, addFn) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    addFn();
+  }, []);
 
   const handleAwardToggle = useCallback(
     (field, award) => {
@@ -300,11 +351,13 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
 
   const certificateCountryOptions = useMemo(
     () =>
-      Object.entries(imdbCertificateRatings).map(([code]) => ({
-        value: code,
-        label: countries.find((c) => c.iso_3166_1 === code)?.english_name || code,
-      })),
-    [imdbCertificateRatings, countries]
+      countries
+        .map((c) => ({
+          value: c.iso_3166_1,
+          label: c.english_name || c.iso_3166_1,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [countries]
   );
 
   const selectedCertCountry = filters.certificateCountry || '';
@@ -320,39 +373,6 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     }));
   }, [selectedCertCountry, imdbCertificateRatings]);
 
-  const handleCertificateToggle = useCallback(
-    (certValue) => {
-      const current = filters.certificates || [];
-      const next = current.includes(certValue)
-        ? current.filter((c) => c !== certValue)
-        : [...current, certValue];
-      onFiltersChange('certificates', next);
-    },
-    [filters.certificates, onFiltersChange]
-  );
-
-  const handleRankedListToggle = useCallback(
-    (listValue) => {
-      const current = filters.rankedLists || [];
-      const next = current.includes(listValue)
-        ? current.filter((l) => l !== listValue)
-        : [...current, listValue];
-      onFiltersChange('rankedLists', next);
-    },
-    [filters.rankedLists, onFiltersChange]
-  );
-
-  const handleExcludeRankedListToggle = useCallback(
-    (listValue) => {
-      const current = filters.excludeRankedLists || [];
-      const next = current.includes(listValue)
-        ? current.filter((l) => l !== listValue)
-        : [...current, listValue];
-      onFiltersChange('excludeRankedLists', next);
-    },
-    [filters.excludeRankedLists, onFiltersChange]
-  );
-
   const commitRankedListMaxRank = (rawValue) => {
     const trimmed = String(rawValue ?? '').trim();
     if (!trimmed) {
@@ -366,9 +386,35 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
       setRankInputDraft(null);
       return;
     }
-    const clamped = Math.min(Math.max(parsed, 1), 250);
-    onFiltersChange('rankedListMaxRank', clamped);
+
+    applyRankConstraint({ mode: activeRankMode, type: activeRankType });
+
+    const normalized = Math.max(parsed, 1);
+    onFiltersChange('rankedListMaxRank', normalized);
     setRankInputDraft(null);
+  };
+
+  const handleRankedListMaxRankChange = (rawValue) => {
+    const next = String(rawValue ?? '');
+    if (!/^\d*$/.test(next)) return;
+
+    setRankInputDraft(next);
+
+    const trimmed = next.trim();
+    if (!trimmed) {
+      onFiltersChange('rankedListMaxRank', undefined);
+      return;
+    }
+
+    const parsed = parseInt(trimmed, 10);
+    if (Number.isNaN(parsed)) {
+      onFiltersChange('rankedListMaxRank', undefined);
+      return;
+    }
+
+    applyRankConstraint({ mode: activeRankMode, type: activeRankType });
+
+    onFiltersChange('rankedListMaxRank', Math.max(parsed, 1));
   };
 
   const addArrayFilterValue = useCallback(
@@ -739,22 +785,17 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
       >
         <div className="filter-group mb-4">
           <LabelWithTooltip label="Include Keywords" tooltip="Results must match these keywords." />
-          <form className="flex gap-2" onSubmit={handleAddKeyword}>
+          <div>
             <input
               type="text"
-              className="input flex-1"
+              className="input"
               placeholder="e.g. superhero, survival..."
               value={keywordInput}
               onChange={(e) => setKeywordInput(e.target.value)}
+              onKeyDown={(e) => handleEnterToAdd(e, handleAddKeyword)}
             />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded transition-colors text-sm font-medium"
-              disabled={!keywordInput.trim()}
-            >
-              Add
-            </button>
-          </form>
+            <span className="filter-label-hint">Press Enter to add</span>
+          </div>
           {(filters.keywords || []).length > 0 && (
             <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
               {filters.keywords.map((kw) => (
@@ -777,22 +818,17 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             label="Exclude Keywords"
             tooltip="Results must NOT match these keywords."
           />
-          <form className="flex gap-2" onSubmit={handleAddExcludeKeyword}>
+          <div>
             <input
               type="text"
-              className="input flex-1"
+              className="input"
               placeholder="e.g. anime, musical..."
               value={excludeKeywordInput}
               onChange={(e) => setExcludeKeywordInput(e.target.value)}
+              onKeyDown={(e) => handleEnterToAdd(e, handleAddExcludeKeyword)}
             />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded transition-colors text-sm font-medium"
-              disabled={!excludeKeywordInput.trim()}
-            >
-              Exclude
-            </button>
-          </form>
+            <span className="filter-label-hint">Press Enter to add</span>
+          </div>
           {(filters.excludeKeywords || []).length > 0 && (
             <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
               {filters.excludeKeywords.map((kw) => (
@@ -968,7 +1004,12 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
                   type="company"
                   multiple={false}
                 />
-                {selectedCity && <p className="text-xs text-gray-400 mt-2">City selected</p>}
+                {selectedCity && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    Selected: {selectedCity.name}
+                    {selectedCity.knownFor ? ` (${selectedCity.knownFor})` : ''}
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -1002,46 +1043,21 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
           onToggle={toggleSection}
           badgeCount={(filters.certificates || []).length}
         >
-          <div className="filter-group mb-4">
-            <LabelWithTooltip
-              label="Country"
-              tooltip="Select a country to see its content rating options."
-            />
-            <SearchableSelect
-              options={certificateCountryOptions}
-              value={selectedCertCountry}
-              onChange={(value) => {
-                onFiltersChange('certificateCountry', value || undefined);
-                onFiltersChange('certificates', []);
-              }}
-              placeholder="Select country..."
-              searchPlaceholder="Search countries..."
-              labelKey="label"
-              valueKey="value"
-              allowClear={true}
-            />
-          </div>
-
-          {availableCertificates.length > 0 && (
-            <div className="filter-group">
-              <span className="filter-label">Ratings</span>
-              <div className="imdb-chip-wrap">
-                {availableCertificates.map((cert) => {
-                  const selected = (filters.certificates || []).includes(cert.value);
-                  return (
-                    <button
-                      key={cert.value}
-                      type="button"
-                      className={`genre-chip ${selected ? 'selected' : ''}`}
-                      onClick={() => handleCertificateToggle(cert.value)}
-                    >
-                      {cert.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <CertificationCountryFilter
+            countryOptions={certificateCountryOptions}
+            countryValue={selectedCertCountry}
+            onCountryChange={(value) => onFiltersChange('certificateCountry', value || undefined)}
+            ratingOptions={availableCertificates}
+            ratingsValue={filters.certificates || []}
+            onRatingsChange={(value) => onFiltersChange('certificates', value)}
+            countryLabel="Country"
+            countryTooltip="Select a country to see its content rating options."
+            ratingsLabel="Ratings"
+            ratingsTooltip="Content rating certificates available for the selected country."
+            countryPlaceholder="Select country..."
+            ratingsPlaceholder="Select ratings..."
+            clearRatingsOnCountryChange={true}
+          />
         </FilterSection>
       )}
 
@@ -1050,66 +1066,93 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
         <FilterSection
           id="rankedLists"
           title="Ranked Lists"
-          description="Filter by IMDb curated lists (Top 250, Bottom 100, etc.)"
+          description="Filter by IMDb curated ranking lists (Top Rated / Bottom Rated)."
           icon={ListOrdered}
           isOpen={localExpandedSections.rankedLists}
           onToggle={toggleSection}
           badgeCount={
-            (filters.rankedLists || []).length + (filters.excludeRankedLists || []).length
+            (filters.rankedList ? 1 : 0) +
+            (filters.rankedLists || []).length +
+            (filters.excludeRankedLists || []).length +
+            (filters.rankedListMaxRank ? 1 : 0)
           }
         >
-          <div className="filter-group mb-4">
-            <span className="filter-label">Include from Lists</span>
-            <div className="imdb-chip-wrap">
-              {visibleRankedLists.map((list) => {
-                const selected = (filters.rankedLists || []).includes(list.value);
-                return (
-                  <button
-                    key={`inc-${list.value}`}
-                    type="button"
-                    className={`genre-chip ${selected ? 'selected' : ''}`}
-                    onClick={() => handleRankedListToggle(list.value)}
-                  >
-                    {list.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="filter-group mb-4">
-            <span className="filter-label">Exclude from Lists</span>
-            <div className="imdb-chip-wrap">
-              {visibleRankedLists.map((list) => {
-                const selected = (filters.excludeRankedLists || []).includes(list.value);
-                return (
-                  <button
-                    key={`exc-${list.value}`}
-                    type="button"
-                    className={`genre-chip ${selected ? 'selected' : ''}`}
-                    style={
-                      selected
-                        ? {
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            color: '#ef4444',
-                            borderColor: 'rgba(239, 68, 68, 0.2)',
-                          }
-                        : {}
-                    }
-                    onClick={() => handleExcludeRankedListToggle(list.value)}
-                  >
-                    {list.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {!MAX_RANK_HIDDEN && (
             <div className="filter-group">
               <LabelWithTooltip
-                label="Max Rank"
-                tooltip="Only include titles ranked within this position (e.g. top 100)."
+                label="Preset Ranges"
+                tooltip="Quickly autofill the number of ranked titles to include or exclude."
+              />
+              <div className="runtime-presets filter-spacer-sm">
+                {rankedRangePresets.map((preset) => (
+                  <button
+                    key={`rank-preset-${preset.value}`}
+                    type="button"
+                    className={`date-preset ${Number(filters.rankedListMaxRank) === preset.value ? 'active' : ''}`}
+                    onClick={() => {
+                      applyRankConstraint({
+                        mode: activeRankMode,
+                        type: activeRankType,
+                        maxRank: preset.value,
+                      });
+                      setRankInputDraft(null);
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="date-preset"
+                  onClick={() => {
+                    onFiltersChange('rankedListMaxRank', undefined);
+                    setRankInputDraft(null);
+                  }}
+                >
+                  Any
+                </button>
+              </div>
+
+              <LabelWithTooltip
+                label="Mode"
+                tooltip="Choose whether titles in the selected ranked list should be included or excluded."
+              />
+              <SearchableSelect
+                options={rankModeOptions}
+                value={activeRankMode}
+                onChange={(value) => {
+                  const mode = value === 'EXCLUDE' ? 'EXCLUDE' : 'INCLUDE';
+                  applyRankConstraint({ mode, type: activeRankType });
+                }}
+                placeholder="Select mode..."
+                searchPlaceholder="Search mode..."
+                labelKey="label"
+                valueKey="value"
+                allowClear={false}
+              />
+
+              <LabelWithTooltip
+                label="Rank Type"
+                tooltip="Choose which ranked list type this filter should use."
+              />
+              <SearchableSelect
+                options={visibleRankedLists}
+                value={activeRankType}
+                onChange={(value) => {
+                  const type = value || visibleRankedLists[0]?.value;
+                  if (!type) return;
+                  applyRankConstraint({ mode: activeRankMode, type });
+                }}
+                placeholder="Select list type..."
+                searchPlaceholder="Search list type..."
+                labelKey="label"
+                valueKey="value"
+                allowClear={false}
+              />
+
+              <LabelWithTooltip
+                label="Number of Movies"
+                tooltip="Limit the ranked list by position count (e.g. 100 means top/bottom 100)."
               />
               <input
                 type="text"
@@ -1117,10 +1160,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
                 className="input"
                 placeholder="e.g. 100"
                 value={rankInputValue}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  if (/^\d*$/.test(next)) setRankInputDraft(next);
-                }}
+                onChange={(e) => handleRankedListMaxRankChange(e.target.value)}
                 onBlur={(e) => commitRankedListMaxRank(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -1129,7 +1169,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
                   }
                 }}
               />
-              <p className="text-xs text-gray-400 mt-2">Allowed range: 1 to 250</p>
+              <p className="text-xs text-gray-400 mt-2">Allowed range: 1 and above</p>
             </div>
           )}
         </FilterSection>
@@ -1150,29 +1190,22 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             label="Plot Keywords"
             tooltip="Search for titles containing these words in their plot summary."
           />
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              addArrayFilterValue('plot', plotInput, plotValues);
-              setPlotInput('');
-            }}
-          >
+          <div>
             <input
               type="text"
-              className="input flex-1"
+              className="input"
               placeholder="Type and press Enter..."
               value={plotInput}
               onChange={(e) => setPlotInput(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterToAdd(e, () => {
+                  addArrayFilterValue('plot', plotInput, plotValues);
+                  setPlotInput('');
+                })
+              }
             />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded transition-colors text-sm font-medium"
-              disabled={!plotInput.trim()}
-            >
-              Add
-            </button>
-          </form>
+            <span className="filter-label-hint">Press Enter to add</span>
+          </div>
           {plotValues.length > 0 && (
             <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
               {plotValues.map((value) => (
@@ -1195,29 +1228,22 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
             label="Filming Locations"
             tooltip="Search for titles filmed at a specific location."
           />
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              addArrayFilterValue('filmingLocations', filmingInput, filmingLocationValues);
-              setFilmingInput('');
-            }}
-          >
+          <div>
             <input
               type="text"
-              className="input flex-1"
+              className="input"
               placeholder="Type and press Enter..."
               value={filmingInput}
               onChange={(e) => setFilmingInput(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterToAdd(e, () => {
+                  addArrayFilterValue('filmingLocations', filmingInput, filmingLocationValues);
+                  setFilmingInput('');
+                })
+              }
             />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded transition-colors text-sm font-medium"
-              disabled={!filmingInput.trim()}
-            >
-              Add
-            </button>
-          </form>
+            <span className="filter-label-hint">Press Enter to add</span>
+          </div>
           {filmingLocationValues.length > 0 && (
             <div className="imdb-selected-chips mt-3" style={{ marginTop: '12px' }}>
               {filmingLocationValues.map((value) => (

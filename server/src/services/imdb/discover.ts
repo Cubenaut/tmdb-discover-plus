@@ -124,21 +124,23 @@ export async function advancedSearch(
 
   const filterRankedListsByType = (lists: string[] | undefined): string[] | undefined => {
     if (!lists?.length) return undefined;
-    const result =
-      contentType === 'series'
-        ? lists.filter((l) => l === 'TOP_250_TV')
-        : lists.filter((l) => l !== 'TOP_250_TV');
+    const result = contentType === 'series' ? [] : lists;
     return result.length ? result : undefined;
   };
   const compatibleRankedList =
-    params.rankedList &&
-    (contentType === 'series'
-      ? params.rankedList === 'TOP_250_TV'
-      : params.rankedList !== 'TOP_250_TV')
-      ? params.rankedList
-      : undefined;
-  const compatibleRankedLists = filterRankedListsByType(params.rankedLists);
+    params.rankedList && contentType !== 'series' ? params.rankedList : undefined;
+  let compatibleRankedLists = filterRankedListsByType(params.rankedLists);
   const compatibleExcludeRankedLists = filterRankedListsByType(params.excludeRankedLists);
+
+  if (
+    contentType === 'movie' &&
+    params.rankedListMaxRank &&
+    !compatibleRankedList &&
+    !(compatibleRankedLists?.length || 0) &&
+    !(compatibleExcludeRankedLists?.length || 0)
+  ) {
+    compatibleRankedLists = ['TOP_250'];
+  }
 
   // Phase 1: Companies, People, In Theatres, Certificates
   if (params.companies?.length) queryParams.companies = params.companies;

@@ -42,6 +42,7 @@ import {
   ERROR_DEDUP,
   normalizeBaseUrl,
   buildCatalogId,
+  catalogServerTtl,
 } from '../constants.ts';
 import { logSwallowedError } from '../utils/helpers.ts';
 
@@ -396,46 +397,67 @@ async function handleImdbCatalogRequest(
       }
     }
 
-    const imdbIds = titles
-      .map((t) => t.id)
-      .filter((id): id is string => !!id && /^tt\d+$/.test(id));
+    const cache = getCache();
+    const configVersion = userConfig.updatedAt ? new Date(userConfig.updatedAt).getTime() : 0;
+    const imdbCatalogCacheKey = !searchQuery
+      ? `catalog-imdb:${userId}:${catalogId}:${type}:${skip}:${extra.genre || ''}:${configVersion}`
+      : null;
 
-    const resolvedIds = await tmdb.batchResolveImdbIds(apiKey, imdbIds, type, {
-      language: displayLanguage,
-    });
+    const computeImdbMetas = async (): Promise<StremioMetaPreview[]> => {
+      const imdbIds = titles
+        .map((t) => t.id)
+        .filter((id): id is string => !!id && /^tt\d+$/.test(id));
 
-    const uniqueTmdbIds = [...new Set(resolvedIds.values())];
-    const detailsMap = await tmdb.batchGetDetails(apiKey, uniqueTmdbIds, type, {
-      displayLanguage,
-    });
+      const resolvedIds = await tmdb.batchResolveImdbIds(apiKey, imdbIds, type, {
+        language: displayLanguage,
+      });
 
-    const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
-      imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
-    }));
-    let ratingsMap: Map<string, string> | null = null;
-    try {
-      ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
-    } catch (err) {
-      logSwallowedError('addon:imdb-rating', err);
-    }
+      const uniqueTmdbIds = [...new Set(resolvedIds.values())];
+      const detailsMap = await tmdb.batchGetDetails(apiKey, uniqueTmdbIds, type, {
+        displayLanguage,
+      });
+
+      const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
+        imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
+      }));
+      let ratingsMap: Map<string, string> | null = null;
+      try {
+        ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
+      } catch (err) {
+        logSwallowedError('addon:imdb-rating', err);
+      }
+
+      return (
+        await Promise.all(
+          titles.map(async (title) => {
+            const tmdbId = resolvedIds.get(title.id);
+            if (!tmdbId) return null;
+            const details = detailsMap.get(tmdbId) as TmdbDetails | null;
+            if (!details) return null;
+            return tmdb.toStremioMetaPreview(
+              details,
+              type,
+              posterOptions,
+              displayLanguage || null,
+              ratingsMap
+            );
+          })
+        )
+      ).filter((m): m is StremioMetaPreview => m !== null);
+    };
 
     const metas = (
-      await Promise.all(
-        titles.map(async (title) => {
-          const tmdbId = resolvedIds.get(title.id);
-          if (!tmdbId) return null;
-          const details = detailsMap.get(tmdbId) as TmdbDetails | null;
-          if (!details) return null;
-          return tmdb.toStremioMetaPreview(
-            details,
-            type,
-            posterOptions,
-            displayLanguage || null,
-            ratingsMap
-          );
-        })
-      )
-    ).filter((m): m is StremioMetaPreview => m !== null);
+      imdbCatalogCacheKey
+        ? await cache.wrap(
+            imdbCatalogCacheKey,
+            computeImdbMetas,
+            CACHE_TTLS.CATALOG_SERVER_DISCOVER,
+            {
+              allowStale: true,
+            }
+          )
+        : await computeImdbMetas()
+    ) as StremioMetaPreview[];
 
     const baseUrl = normalizeBaseUrl(userConfig.baseUrl || getBaseUrl(req));
     const { posterPlaceholder } = getPlaceholderUrls(baseUrl);
@@ -445,7 +467,7 @@ async function handleImdbCatalogRequest(
 
     res.set(
       'Cache-Control',
-      `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}`
+      `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
     );
     log.debug('Returning IMDb catalog results', {
       count: metas.length,
@@ -549,107 +571,120 @@ async function handleCatalogRequest(
       resolvedFilters?.sortBy === 'random'
     );
 
-    let result: { results?: unknown[] } | null = null;
+    const cache = getCache();
+    const configVersion = config.updatedAt ? new Date(config.updatedAt).getTime() : 0;
+    const catalogCacheKey = `catalog:${userId}:${catalogId}:${type}:${skip}:${extra.genre || ''}:${configVersion}`;
+    const serverTtl = catalogServerTtl(listType);
 
-    if (search) {
-      if (/^tt\d{7,8}$/i.test(search.trim())) {
-        try {
-          const found = await tmdb.findByImdbId(apiKey, search.trim(), type, {
-            language: config.preferences?.defaultLanguage,
-          });
-          if (found?.tmdbId) {
-            const details = (await tmdb.getDetails(apiKey, found.tmdbId, type, {
-              displayLanguage: config.preferences?.defaultLanguage,
-            })) as TmdbDetails | null;
-            if (details) {
-              (details as TmdbDetails & { imdb_id?: string }).imdb_id =
-                details.external_ids?.imdb_id || search.trim();
-              result = { results: [details] };
+    const computeCatalogMetas = async (): Promise<StremioMetaPreview[]> => {
+      let result: { results?: unknown[] } | null = null;
+
+      if (search) {
+        if (/^tt\d{7,8}$/i.test(search.trim())) {
+          try {
+            const found = await tmdb.findByImdbId(apiKey, search.trim(), type, {
+              language: config.preferences?.defaultLanguage,
+            });
+            if (found?.tmdbId) {
+              const details = (await tmdb.getDetails(apiKey, found.tmdbId, type, {
+                displayLanguage: config.preferences?.defaultLanguage,
+              })) as TmdbDetails | null;
+              if (details) {
+                (details as TmdbDetails & { imdb_id?: string }).imdb_id =
+                  details.external_ids?.imdb_id || search.trim();
+                result = { results: [details] };
+              }
             }
+          } catch (e) {
+            log.warn('IMDb direct lookup failed, falling back to search', {
+              search,
+              error: (e as Error).message,
+            });
           }
-        } catch (e) {
-          log.warn('IMDb direct lookup failed, falling back to search', {
-            search,
-            error: (e as Error).message,
+        }
+
+        if (!result) {
+          result = await tmdb.comprehensiveSearch(apiKey, search, type, page, {
+            displayLanguage: config.preferences?.defaultLanguage,
+            includeAdult: config.preferences?.includeAdult,
           });
         }
-      }
-
-      if (!result) {
-        result = await tmdb.comprehensiveSearch(apiKey, search, type, page, {
+      } else if (listType && listType !== 'discover') {
+        result = (await tmdb.fetchSpecialList(apiKey, listType, type, {
+          page,
           displayLanguage: config.preferences?.defaultLanguage,
-          includeAdult: config.preferences?.includeAdult,
-        });
-      }
-    } else if (listType && listType !== 'discover') {
-      result = (await tmdb.fetchSpecialList(apiKey, listType, type, {
-        page,
-        displayLanguage: config.preferences?.defaultLanguage,
-        language: resolvedFilters?.language || catalogConfig.filters?.language,
-        region: resolvedFilters?.countries || catalogConfig.filters?.countries,
-        randomize,
-      })) as { results?: unknown[] } | null;
+          language: resolvedFilters?.language || catalogConfig.filters?.language,
+          region: resolvedFilters?.countries || catalogConfig.filters?.countries,
+          randomize,
+        })) as { results?: unknown[] } | null;
 
-      if (result?.results && effectiveFilters.genres) {
-        const genreIds = new Set(
-          (Array.isArray(effectiveFilters.genres)
-            ? effectiveFilters.genres
-            : [effectiveFilters.genres]
-          )
-            .map((id: unknown) => Number(id))
-            .filter((id: number) => !isNaN(id))
-        );
-        if (genreIds.size > 0) {
-          result.results = result.results.filter((item: unknown) => {
-            const ids = (item as { genre_ids?: number[] }).genre_ids;
-            if (!Array.isArray(ids)) return true;
-            return ids.some((gid: number) => genreIds.has(gid));
-          });
+        if (result?.results && effectiveFilters.genres) {
+          const genreIds = new Set(
+            (Array.isArray(effectiveFilters.genres)
+              ? effectiveFilters.genres
+              : [effectiveFilters.genres]
+            )
+              .map((id: unknown) => Number(id))
+              .filter((id: number) => !isNaN(id))
+          );
+          if (genreIds.size > 0) {
+            result.results = result.results.filter((item: unknown) => {
+              const ids = (item as { genre_ids?: number[] }).genre_ids;
+              if (!Array.isArray(ids)) return true;
+              return ids.some((gid: number) => genreIds.has(gid));
+            });
+          }
+        }
+      } else {
+        result = (await tmdb.discover(apiKey, {
+          type,
+          ...(resolvedFilters as Record<string, unknown>),
+          displayLanguage: config.preferences?.defaultLanguage,
+          page,
+          randomize,
+        })) as { results?: unknown[] } | null;
+      }
+
+      const allItems = (result?.results || []) as TmdbResult[];
+      const displayLanguage = config.preferences?.defaultLanguage;
+
+      const tmdbIds = allItems.map((item) => item.id);
+      const detailsMap = await tmdb.batchGetDetails(apiKey, tmdbIds, type, { displayLanguage });
+
+      const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
+        imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
+      }));
+      let ratingsMap: Map<string, string> | null = null;
+      if (!search) {
+        try {
+          ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
+        } catch (err) {
+          logSwallowedError('addon:rating-fetch', err);
         }
       }
-    } else {
-      result = (await tmdb.discover(apiKey, {
-        type,
-        ...(resolvedFilters as Record<string, unknown>),
-        displayLanguage: config.preferences?.defaultLanguage,
-        page,
-        randomize,
-      })) as { results?: unknown[] } | null;
-    }
 
-    const allItems = (result?.results || []) as TmdbResult[];
-    const displayLanguage = config.preferences?.defaultLanguage;
-
-    const tmdbIds = allItems.map((item) => item.id);
-    const detailsMap = await tmdb.batchGetDetails(apiKey, tmdbIds, type, { displayLanguage });
-
-    const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
-      imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
-    }));
-    let ratingsMap: Map<string, string> | null = null;
-    if (!search) {
-      try {
-        ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
-      } catch (err) {
-        logSwallowedError('addon:rating-fetch', err);
-      }
-    }
+      return (
+        await Promise.all(
+          allItems.map(async (item) => {
+            const details = detailsMap.get(item.id) as TmdbDetails | null;
+            if (!details) return null;
+            return tmdb.toStremioMetaPreview(
+              details,
+              type,
+              posterOptions,
+              displayLanguage || null,
+              ratingsMap
+            );
+          })
+        )
+      ).filter((m): m is StremioMetaPreview => m !== null);
+    };
 
     const metas = (
-      await Promise.all(
-        allItems.map(async (item) => {
-          const details = detailsMap.get(item.id) as TmdbDetails | null;
-          if (!details) return null;
-          return tmdb.toStremioMetaPreview(
-            details,
-            type,
-            posterOptions,
-            displayLanguage || null,
-            ratingsMap
-          );
-        })
-      )
-    ).filter((m): m is StremioMetaPreview => m !== null);
+      randomize || search
+        ? await computeCatalogMetas()
+        : await cache.wrap(catalogCacheKey, computeCatalogMetas, serverTtl, { allowStale: true })
+    ) as StremioMetaPreview[];
 
     const baseUrl = normalizeBaseUrl(config.baseUrl || getBaseUrl(req));
     const { posterPlaceholder } = getPlaceholderUrls(baseUrl);
@@ -665,7 +700,7 @@ async function handleCatalogRequest(
     } else {
       res.set(
         'Cache-Control',
-        `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}`
+        `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
       );
     }
 
@@ -878,12 +913,16 @@ async function handleMetaRequest(
       videoCount: Array.isArray(responseMeta.videos) ? responseMeta.videos.length : 0,
     });
 
+    res.set(
+      'Cache-Control',
+      `max-age=${CACHE_TTLS.META_HEADER}, stale-while-revalidate=${CACHE_TTLS.META_HEADER * 2}, stale-if-error=259200`
+    );
     res.etagJson(
       {
         meta: responseMeta,
         cacheMaxAge: CACHE_TTLS.META_HEADER,
-        staleRevalidate: 86400,
-        staleError: 86400,
+        staleRevalidate: CACHE_TTLS.META_HEADER * 2,
+        staleError: 259200,
       },
       { extra: `${userId}:${id}` }
     );

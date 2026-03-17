@@ -3,6 +3,7 @@ import { config } from '../config.ts';
 import * as tmdb from '../services/tmdb/index.ts';
 import * as imdb from '../services/imdb/index.ts';
 import { getTmdbThrottle } from './tmdbThrottle.ts';
+import type { ContentType } from '../types/index.ts';
 
 const log = createLogger('CacheWarmer');
 
@@ -80,5 +81,65 @@ export async function warmEssentialCaches(
 
   getTmdbThrottle().endWarmup();
 
+  void warmTrendingMeta(apiKey).catch((err) =>
+    log.warn('Trending meta warming failed (non-critical)', { error: (err as Error).message })
+  );
+
   return { warmed, failed, elapsedMs: elapsed };
+}
+
+async function batchWithConcurrency(
+  tasks: (() => Promise<unknown>)[],
+  concurrency: number
+): Promise<void> {
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    await Promise.allSettled(tasks.slice(i, i + concurrency).map((fn) => fn()));
+  }
+}
+
+export async function warmTrendingMeta(
+  apiKey: string | null
+): Promise<{ warmed: number; skipped: number }> {
+  if (!apiKey) return { warmed: 0, skipped: 0 };
+
+  const PAGES = 5;
+  const CONCURRENCY = 3;
+  const types: ContentType[] = ['movie', 'series'];
+
+  let warmed = 0;
+  let skipped = 0;
+
+  for (const type of types) {
+    for (let page = 1; page <= PAGES; page++) {
+      let pageResult: { results?: unknown[] } | null = null;
+      try {
+        pageResult = (await tmdb.fetchSpecialList(apiKey, 'trending', type, { page })) as {
+          results?: unknown[];
+        } | null;
+      } catch (err) {
+        log.debug('Trending fetch failed during meta warming', {
+          type,
+          page,
+          error: (err as Error).message,
+        });
+        continue;
+      }
+
+      const items = (pageResult?.results || []) as { id: number }[];
+      const tasks = items.map((item) => async () => {
+        try {
+          await tmdb.getDetails(apiKey, item.id, type, { language: 'en' });
+          warmed++;
+        } catch (err) {
+          skipped++;
+          log.debug('Detail warming skipped', { id: item.id, type, error: (err as Error).message });
+        }
+      });
+
+      await batchWithConcurrency(tasks, CONCURRENCY);
+    }
+  }
+
+  log.info('Trending meta pre-warming complete', { warmed, skipped });
+  return { warmed, skipped };
 }

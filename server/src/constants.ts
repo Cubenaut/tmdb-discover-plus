@@ -3,14 +3,14 @@ export const TIMEOUTS = {
   IMDB_FETCH_MS: 10_000,
   TMDB_FETCH_MS: 10_000,
   NOMINATIM_FETCH_MS: 8_000,
-  RPDB_FETCH_MS: 5_000,
+  RPDB_FETCH_MS: 1_500,
   SHUTDOWN_MS: 30_000,
 } as const;
 
 export const CACHE_TTLS = {
-  CATALOG_HEADER: 300,
-  CATALOG_STALE_REVALIDATE: 600,
-  META_HEADER: 3600,
+  CATALOG_HEADER: 10_800,
+  CATALOG_STALE_REVALIDATE: 3_600,
+  META_HEADER: 86_400,
   LOGO: 604_800,
   DETAIL: 86_400,
   DISCOVER_PAGE: 86_400,
@@ -20,7 +20,24 @@ export const CACHE_TTLS = {
   RPDB_NOT_FOUND: 86_400,
   RPDB_RATING: 86_400,
   QUOTA_PERSISTENCE: 3_024_000,
+  CATALOG_SERVER_DISCOVER: 86_400,
+  CATALOG_SERVER_TRENDING: 10_800,
 } as const;
+
+const TRENDING_LIST_TYPES = new Set([
+  'trending',
+  'now_playing',
+  'upcoming',
+  'on_the_air',
+  'popular',
+  'airing_today',
+]);
+
+export function catalogServerTtl(listType: string | undefined | null): number {
+  return listType && TRENDING_LIST_TYPES.has(listType)
+    ? CACHE_TTLS.CATALOG_SERVER_TRENDING
+    : CACHE_TTLS.CATALOG_SERVER_DISCOVER;
+}
 
 export const CONCURRENCY = {
   TMDB_DETAIL: 5,

@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { imdbFetch } from './client.ts';
 import { getCache } from '../cache/index.ts';
 import { config } from '../../config.ts';
+import { DISPLAY } from '../../constants.ts';
 import { createLogger } from '../../utils/logger.ts';
 import { stableStringify } from '../../utils/stableStringify.ts';
 import { logSwallowedError } from '../../utils/helpers.ts';
@@ -29,6 +30,7 @@ const AWARD_TYPE_RESTRICTIONS = {
 } as const;
 
 const IN_THEATERS_BOUNDING_BOX_OFFSET = 0.1;
+const IMDB_PAGE_SIZE = DISPLAY.IMDB_PAGE_SIZE;
 
 function roundTo(value: number, decimals: number): number {
   const factor = 10 ** decimals;
@@ -89,7 +91,7 @@ export async function advancedSearch(
   } else {
     queryParams.sortOrder = requestedOrder;
   }
-  queryParams.limit = params.limit || 100;
+  queryParams.limit = params.limit || IMDB_PAGE_SIZE;
 
   const types = params.types?.length ? params.types : mapContentTypeToImdbTypes(contentType);
   queryParams.types = hasInTheatersLocation
@@ -232,7 +234,7 @@ export async function advancedSearch(
   }
 
   if (data.pageInfo?.endCursor) {
-    const nextSkip = skip + (params.limit || 100);
+    const nextSkip = skip + (params.limit || IMDB_PAGE_SIZE);
     const cursorKey = buildCursorCacheKey(filterHash, nextSkip);
     try {
       await cache.set(cursorKey, data.pageInfo.endCursor, ttl);
@@ -335,7 +337,7 @@ export async function getPopular(type: ContentType): Promise<ImdbRankingResult> 
 export async function getList(
   listId: string,
   skip: number = 0,
-  limit: number = 100
+  limit: number = IMDB_PAGE_SIZE
 ): Promise<ImdbListResult> {
   const ttl = config.imdbApi.cacheTtlList;
   const sanitizedId = listId.replace(/[^a-zA-Z0-9]/g, '');

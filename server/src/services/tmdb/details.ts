@@ -432,3 +432,53 @@ export async function batchGetDetails(
 
   return results;
 }
+
+export async function getPreviewDetails(
+  apiKey: string,
+  tmdbId: number | string,
+  type: ContentType = 'movie',
+  options?: DetailsOptions
+): Promise<unknown> {
+  const mediaType = type === 'series' ? 'tv' : 'movie';
+  const languageParam = options?.displayLanguage || options?.language;
+
+  const params: Record<string, string | number | boolean | undefined> = {
+    append_to_response: 'external_ids,credits,images',
+  };
+
+  if (languageParam) {
+    params.language = languageParam;
+    params.include_image_language = `${languageParam},en,null`;
+  } else {
+    params.include_image_language = 'en,null';
+  }
+
+  return tmdbFetch(`/${mediaType}/${tmdbId}`, apiKey, params);
+}
+
+export async function batchGetPreviewDetails(
+  apiKey: string,
+  tmdbIds: number[],
+  type: ContentType,
+  options?: { displayLanguage?: string }
+): Promise<Map<number, unknown>> {
+  const results = new Map<number, unknown>();
+
+  for (let i = 0; i < tmdbIds.length; i += DETAIL_CONCURRENCY) {
+    const batch = tmdbIds.slice(i, i + DETAIL_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (tmdbId) => {
+        try {
+          const details = await getPreviewDetails(apiKey, tmdbId, type, {
+            displayLanguage: options?.displayLanguage,
+          });
+          if (details) results.set(tmdbId, details);
+        } catch (err) {
+          logSwallowedError('tmdb-details:catalog-preview-batch-fetch', err);
+        }
+      })
+    );
+  }
+
+  return results;
+}

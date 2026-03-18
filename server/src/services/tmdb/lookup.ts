@@ -1,7 +1,13 @@
 import { getCache } from '../cache/index.ts';
 import { tmdbFetch } from './client.ts';
+import { batchGetPreviewDetails } from './details.ts';
 import { createLogger } from '../../utils/logger.ts';
-import type { TmdbExternalIds, TmdbFindResponse, TmdbResult } from '../../types/index.ts';
+import type {
+  TmdbExternalIds,
+  TmdbFindResponse,
+  TmdbResult,
+  ContentType,
+} from '../../types/index.ts';
 import { CACHE_TTLS, CONCURRENCY } from '../../constants.ts';
 import { logSwallowedError } from '../../utils/helpers.ts';
 
@@ -153,4 +159,44 @@ export async function batchResolveImdbIds(
   }
 
   return results;
+}
+
+export async function batchResolveAndFetchDetails(
+  apiKey: string,
+  imdbIds: string[],
+  type: ContentType,
+  detailOptions: { displayLanguage?: string } = {},
+  options: { language?: string } = {}
+): Promise<{ resolvedIds: Map<string, number>; detailsMap: Map<number, unknown> }> {
+  const resolvedIds = new Map<string, number>();
+  const detailsMap = new Map<number, unknown>();
+
+  for (let i = 0; i < imdbIds.length; i += RESOLVE_CONCURRENCY) {
+    const batch = imdbIds.slice(i, i + RESOLVE_CONCURRENCY);
+
+    const batchResolved = await Promise.all(
+      batch.map(async (imdbId) => {
+        try {
+          const found = await findByImdbId(apiKey, imdbId, type, options);
+          if (found?.tmdbId) {
+            resolvedIds.set(imdbId, found.tmdbId);
+            return found.tmdbId;
+          }
+        } catch (err) {
+          logSwallowedError('tmdb:lookup:resolve-and-fetch', err);
+        }
+        return null;
+      })
+    );
+
+    const tmdbIds = batchResolved.filter((id): id is number => id !== null);
+    if (tmdbIds.length === 0) continue;
+
+    const batchDetails = await batchGetPreviewDetails(apiKey, tmdbIds, type, detailOptions);
+    for (const [tmdbId, details] of batchDetails) {
+      detailsMap.set(tmdbId, details);
+    }
+  }
+
+  return { resolvedIds, detailsMap };
 }

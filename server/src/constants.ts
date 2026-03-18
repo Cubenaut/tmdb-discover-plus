@@ -40,10 +40,10 @@ export function catalogServerTtl(listType: string | undefined | null): number {
 }
 
 export const CONCURRENCY = {
-  TMDB_DETAIL: 5,
-  IMDB_SEASON: 3,
-  ENRICHMENT: 5,
-  RESOLVE: 5,
+  TMDB_DETAIL: 10,
+  IMDB_SEASON: 5,
+  ENRICHMENT: 10,
+  RESOLVE: 10,
   MAX_IN_FLIGHT: 5_000,
 } as const;
 
@@ -59,6 +59,7 @@ export const DISPLAY = {
   CAST_DETAILED: 10,
   CAST_LINKS: 5,
   TMDB_PAGE_SIZE: 20,
+  IMDB_PAGE_SIZE: 20,
   IMDB_EPISODE_PAGE_LIMIT: 250,
   IMDB_EPISODE_PAGE_MAX: 4,
 } as const;

@@ -21,6 +21,8 @@ export {
   getSeasonDetails,
   getSeriesEpisodes,
   batchGetDetails,
+  getPreviewDetails,
+  batchGetPreviewDetails,
 } from './details.ts';
 
 export {
@@ -36,6 +38,7 @@ export {
   enrichItemsWithImdbIds,
   findByImdbId,
   batchResolveImdbIds,
+  batchResolveAndFetchDetails,
 } from './lookup.ts';
 
 export {

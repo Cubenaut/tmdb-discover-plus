@@ -23,6 +23,7 @@ import {
   parseIdArray,
   setNoCacheHeaders,
 } from '../utils/helpers.ts';
+import { stableStringify } from '../utils/stableStringify.ts';
 import { resolveDynamicDatePreset } from '../utils/dateHelpers.ts';
 import { createLogger } from '../utils/logger.ts';
 import crypto from 'crypto';
@@ -111,6 +112,7 @@ router.param('type', (req, res, next, value) => {
 import { buildManifest, enrichManifestWithGenres } from '../services/manifestService.ts';
 
 const TMDB_PAGE_SIZE = DISPLAY.TMDB_PAGE_SIZE;
+const IMDB_PAGE_SIZE = DISPLAY.IMDB_PAGE_SIZE;
 
 function pickPreferredMetaLanguage(config: UserConfig | null): string {
   return config?.preferences?.defaultLanguage || 'en';
@@ -278,6 +280,32 @@ async function resolveGenreFilter(
   }
 }
 
+function buildImdbEnrichmentCacheKey(
+  type: ContentType,
+  listType: string,
+  filters: Record<string, unknown>,
+  searchParams: Record<string, unknown> | null,
+  skip: number,
+  posterService: string,
+  genre: string
+): string {
+  const genreSlug =
+    genre && genre !== 'All' ? genre.slice(0, 40).replace(/[^a-zA-Z0-9_-]/g, '_') : '';
+  if (listType === 'top250' || listType === 'popular') {
+    return `catalog-imdb:${type}:${listType}:${skip}:${posterService}`;
+  }
+  if (listType === 'imdb_list' && filters.imdbListId) {
+    const listId = String(filters.imdbListId).slice(0, 40);
+    return `catalog-imdb:imdb_list:${listId}:${skip}:${posterService}`;
+  }
+  const filterHash = crypto
+    .createHash('sha256')
+    .update(stableStringify(searchParams))
+    .digest('hex')
+    .slice(0, 20);
+  return `catalog-imdb:${type}:discover:${filterHash}:${skip}:${genreSlug}:${posterService}`;
+}
+
 async function handleImdbCatalogRequest(
   userId: string,
   type: ContentType,
@@ -303,52 +331,113 @@ async function handleImdbCatalogRequest(
 
     const posterOptions = buildPosterOptions(userConfig);
     const displayLanguage = userConfig.preferences?.defaultLanguage;
+    const posterService = posterOptions?.service || 'none';
+    const cache = getCache();
 
-    let titles: { id: string }[] = [];
+    const computeEnrichedMetas = async (
+      pageTitles: { id: string }[]
+    ): Promise<StremioMetaPreview[]> => {
+      const imdbIds = pageTitles
+        .map((t) => t.id)
+        .filter((id): id is string => !!id && /^tt\d+$/.test(id));
+
+      const { resolvedIds, detailsMap } = await tmdb.batchResolveAndFetchDetails(
+        apiKey,
+        imdbIds,
+        type,
+        { displayLanguage },
+        { language: displayLanguage }
+      );
+
+      const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
+        imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
+      }));
+      let ratingsMap: Map<string, string> | null = null;
+      try {
+        ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
+      } catch (err) {
+        logSwallowedError('addon:imdb-rating', err);
+      }
+
+      return (
+        await Promise.all(
+          pageTitles.map(async (title) => {
+            const tmdbId = resolvedIds.get(title.id);
+            if (!tmdbId) return null;
+            const details = detailsMap.get(tmdbId) as TmdbDetails | null;
+            if (!details) return null;
+            return tmdb.toStremioMetaPreview(
+              details,
+              type,
+              posterOptions,
+              displayLanguage || null,
+              ratingsMap
+            );
+          })
+        )
+      ).filter((m): m is StremioMetaPreview => m !== null);
+    };
 
     if (catalogId === 'imdb-search-movie' || catalogId === 'imdb-search-series') {
       if (!searchQuery) return res.json({ metas: [] });
       const imdbTypes = type === 'series' ? ['tvSeries', 'tvMiniSeries'] : ['movie', 'tvMovie'];
-      const result = await imdb.search(searchQuery, imdbTypes, 50);
-      titles = (result.titles || []) as { id: string }[];
-    } else {
-      const catalogConfig = userConfig.catalogs.find((c) => {
-        const id = buildCatalogId('imdb', c);
-        return id === catalogId;
-      });
-
-      if (!catalogConfig) {
-        log.debug('IMDb Catalog not found', {
-          catalogId,
-          available: userConfig.catalogs.map((c) => c.name),
-        });
-        return res.json({ metas: [] });
+      const searchResult = await imdb.search(searchQuery, imdbTypes, IMDB_PAGE_SIZE);
+      const searchTitles = (searchResult.titles || []) as { id: string }[];
+      const metas = await computeEnrichedMetas(searchTitles);
+      const baseUrl = normalizeBaseUrl(userConfig.baseUrl || getBaseUrl(req));
+      const { posterPlaceholder } = getPlaceholderUrls(baseUrl);
+      for (const m of metas) {
+        if (!m.poster) m.poster = posterPlaceholder;
       }
-
-      log.debug('IMDb Catalog matched', {
-        name: catalogConfig.name,
-        id: catalogId,
+      res.set(
+        'Cache-Control',
+        `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
+      );
+      log.debug('Returning IMDb search results', {
+        count: metas.length,
+        catalogId,
+        durationMs: Date.now() - startTime,
       });
+      res.etagJson(
+        {
+          metas,
+          cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
+          staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+        },
+        { extra: `${userId}:${catalogId}:${searchQuery}` }
+      );
+      return;
+    }
 
-      const filters = sanitizeImdbFilters(catalogConfig.filters || {});
-      const listType = filters.listType || 'discover';
+    const catalogConfig = userConfig.catalogs.find((c) => {
+      const id = buildCatalogId('imdb', c);
+      return id === catalogId;
+    });
 
-      const effectiveFilters = { ...filters };
-      if (extra.genre && extra.genre !== 'All') {
-        effectiveFilters.genres = [extra.genre];
-      }
+    if (!catalogConfig) {
+      log.debug('IMDb Catalog not found', {
+        catalogId,
+        available: userConfig.catalogs.map((c) => c.name),
+      });
+      return res.json({ metas: [] });
+    }
 
-      if (listType === 'top250') {
-        const result = await imdb.getTopRanking(type);
-        titles = ((result.titles || []) as { id: string }[]).slice(skip, skip + 100);
-      } else if (listType === 'popular') {
-        const result = await imdb.getPopular(type);
-        titles = ((result.titles || []) as { id: string }[]).slice(skip, skip + 100);
-      } else if (listType === 'imdb_list' && filters.imdbListId) {
-        const result = await imdb.getList(filters.imdbListId as string, skip);
-        titles = (result.titles || []) as { id: string }[];
-      } else {
-        const searchParams = {
+    log.debug('IMDb Catalog matched', { name: catalogConfig.name, id: catalogId });
+
+    const filters = sanitizeImdbFilters(catalogConfig.filters || {});
+    const listType: string = (filters.listType as string) || 'discover';
+    const effectiveFilters = { ...filters };
+    if (extra.genre && extra.genre !== 'All') {
+      effectiveFilters.genres = [extra.genre];
+    }
+
+    const isSpecialList =
+      listType === 'top250' ||
+      listType === 'popular' ||
+      (listType === 'imdb_list' && Boolean(filters.imdbListId));
+
+    const searchParams = !isSpecialList
+      ? {
           query: effectiveFilters.query,
           types: effectiveFilters.types,
           genres: effectiveFilters.genres,
@@ -387,77 +476,53 @@ async function handleImdbCatalogRequest(
           plot: effectiveFilters.plot,
           filmingLocations: effectiveFilters.filmingLocations,
           withData: effectiveFilters.withData,
-        };
+        }
+      : null;
+
+    const enrichmentCacheKey = buildImdbEnrichmentCacheKey(
+      type,
+      listType,
+      filters,
+      searchParams,
+      skip,
+      posterService,
+      extra.genre || ''
+    );
+
+    const fetchAndEnrichPage = async (targetSkip: number): Promise<StremioMetaPreview[]> => {
+      let pageTitles: { id: string }[] = [];
+      if (listType === 'top250') {
+        const result = await imdb.getTopRanking(type);
+        pageTitles = ((result.titles || []) as { id: string }[]).slice(
+          targetSkip,
+          targetSkip + IMDB_PAGE_SIZE
+        );
+      } else if (listType === 'popular') {
+        const result = await imdb.getPopular(type);
+        pageTitles = ((result.titles || []) as { id: string }[]).slice(
+          targetSkip,
+          targetSkip + IMDB_PAGE_SIZE
+        );
+      } else if (listType === 'imdb_list' && filters.imdbListId) {
+        const result = await imdb.getList(filters.imdbListId as string, targetSkip);
+        pageTitles = (result.titles || []) as { id: string }[];
+      } else if (searchParams) {
         const result = await imdb.advancedSearch(
           searchParams as Parameters<typeof imdb.advancedSearch>[0],
           type,
-          skip
+          targetSkip
         );
-        titles = (result.titles || []) as { id: string }[];
+        pageTitles = (result.titles || []) as { id: string }[];
       }
-    }
-
-    const cache = getCache();
-    const configVersion = userConfig.updatedAt ? new Date(userConfig.updatedAt).getTime() : 0;
-    const imdbCatalogCacheKey = !searchQuery
-      ? `catalog-imdb:${userId}:${catalogId}:${type}:${skip}:${extra.genre || ''}:${configVersion}`
-      : null;
-
-    const computeImdbMetas = async (): Promise<StremioMetaPreview[]> => {
-      const imdbIds = titles
-        .map((t) => t.id)
-        .filter((id): id is string => !!id && /^tt\d+$/.test(id));
-
-      const resolvedIds = await tmdb.batchResolveImdbIds(apiKey, imdbIds, type, {
-        language: displayLanguage,
-      });
-
-      const uniqueTmdbIds = [...new Set(resolvedIds.values())];
-      const detailsMap = await tmdb.batchGetDetails(apiKey, uniqueTmdbIds, type, {
-        displayLanguage,
-      });
-
-      const detailsForRatings = Array.from(detailsMap.values()).map((d) => ({
-        imdb_id: (d as TmdbDetails)?.external_ids?.imdb_id || undefined,
-      }));
-      let ratingsMap: Map<string, string> | null = null;
-      try {
-        ratingsMap = await tmdb.batchGetCinemetaRatings(detailsForRatings, type);
-      } catch (err) {
-        logSwallowedError('addon:imdb-rating', err);
-      }
-
-      return (
-        await Promise.all(
-          titles.map(async (title) => {
-            const tmdbId = resolvedIds.get(title.id);
-            if (!tmdbId) return null;
-            const details = detailsMap.get(tmdbId) as TmdbDetails | null;
-            if (!details) return null;
-            return tmdb.toStremioMetaPreview(
-              details,
-              type,
-              posterOptions,
-              displayLanguage || null,
-              ratingsMap
-            );
-          })
-        )
-      ).filter((m): m is StremioMetaPreview => m !== null);
+      return computeEnrichedMetas(pageTitles);
     };
 
-    const metas = (
-      imdbCatalogCacheKey
-        ? await cache.wrap(
-            imdbCatalogCacheKey,
-            computeImdbMetas,
-            CACHE_TTLS.CATALOG_SERVER_DISCOVER,
-            {
-              allowStale: true,
-            }
-          )
-        : await computeImdbMetas()
-    ) as StremioMetaPreview[];
+    const metas = (await cache.wrap(
+      enrichmentCacheKey,
+      () => fetchAndEnrichPage(skip),
+      CACHE_TTLS.CATALOG_SERVER_DISCOVER,
+      { allowStale: true }
+    )) as StremioMetaPreview[];
 
     const baseUrl = normalizeBaseUrl(userConfig.baseUrl || getBaseUrl(req));
     const { posterPlaceholder } = getPlaceholderUrls(baseUrl);
@@ -476,19 +541,40 @@ async function handleImdbCatalogRequest(
       durationMs: Date.now() - startTime,
     });
 
-    const extraKey =
-      catalogId === 'imdb-search-movie' || catalogId === 'imdb-search-series'
-        ? `${userId}:${catalogId}:${searchQuery}`
-        : `${userId}:${catalogId}:${skip}`;
-
     res.etagJson(
       {
         metas,
         cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
         staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
       },
-      { extra: extraKey }
+      { extra: `${userId}:${catalogId}:${skip}` }
     );
+
+    if (metas.length > 0 && skip % IMDB_PAGE_SIZE === 0 && imdb.isImdbApiEnabled()) {
+      const nextSkip = skip + IMDB_PAGE_SIZE;
+      const nextEnrichmentKey = buildImdbEnrichmentCacheKey(
+        type,
+        listType,
+        filters,
+        searchParams,
+        nextSkip,
+        posterService,
+        extra.genre || ''
+      );
+      cache
+        .get(nextEnrichmentKey)
+        .then((cached) => {
+          if (cached) return;
+          fetchAndEnrichPage(nextSkip)
+            .then((nextMetas) =>
+              cache
+                .set(nextEnrichmentKey, nextMetas, CACHE_TTLS.CATALOG_SERVER_DISCOVER)
+                .catch((e) => logSwallowedError('addon:imdb-prefetch-cache-set', e))
+            )
+            .catch((e) => logSwallowedError('addon:imdb-speculative-prefetch', e));
+        })
+        .catch(() => {});
+    }
   } catch (error) {
     log.error('IMDb catalog error', {
       catalogId,

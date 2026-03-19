@@ -83,55 +83,8 @@ describe('imdb advancedSearch pagination cursor hydration', () => {
     expect(cacheSet).not.toHaveBeenCalled();
   });
 
-  it('hydrates missing skip cursor from previous cached page and continues fetch', async () => {
-    const store = new Map<string, unknown>();
-    store.set('imdb:catalog:hash:skip0', {
-      titles: [{ id: 'tt1234567' }],
-      pageInfo: { hasNextPage: true, endCursor: 'cursor-for-skip20' },
-    });
-
-    cacheGet.mockImplementation(async (key: string) => {
-      if (key.includes('imdb:catalog:') && key.includes(':skip0')) {
-        return {
-          titles: [{ id: 'tt1234567' }],
-          pageInfo: { hasNextPage: true, endCursor: 'cursor-for-skip20' },
-        };
-      }
-      return store.get(key) ?? null;
-    });
-
-    cacheSet.mockImplementation(async (key: string, value: unknown) => {
-      store.set(key, value);
-    });
-
-    mockedImdbFetch.mockResolvedValue({
-      titles: [{ id: 'tt7654321' }],
-      pageInfo: { hasNextPage: true, endCursor: 'cursor-for-skip40' },
-    });
-
-    const result = await advancedSearch({}, 'movie', 20);
-
-    expect(result.titles).toHaveLength(1);
-    expect(mockedImdbFetch).toHaveBeenCalledWith(
-      '/api/imdb/search/advanced',
-      expect.objectContaining({ endCursor: 'cursor-for-skip20' }),
-      300
-    );
-  });
-
-  it('recovers skip=20 by fetching first page live when cached chain lacks cursor', async () => {
-    cacheGet.mockImplementation(async (key: string) => {
-      if (key.includes('imdb:catalog:') && key.includes(':skip0')) {
-        return {
-          titles: [{ id: 'ttcached000' }],
-          pageInfo: undefined,
-        };
-      }
-      if (key.includes('imdb:cursor:') && key.includes(':skip20')) {
-        return null;
-      }
-      return null;
-    });
+  it('walks from first page to recover skip=20 when cursor cache is missing', async () => {
+    cacheGet.mockResolvedValue(null);
 
     mockedImdbFetch
       .mockResolvedValueOnce({
@@ -147,6 +100,12 @@ describe('imdb advancedSearch pagination cursor hydration', () => {
 
     expect(result.titles).toHaveLength(1);
     expect(mockedImdbFetch).toHaveBeenCalledTimes(2);
+    expect(mockedImdbFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/imdb/search/advanced',
+      expect.objectContaining({ endCursor: 'cursor-live-first-page' }),
+      300
+    );
     expect(cacheSet).toHaveBeenCalledWith(
       expect.stringMatching(/^imdb:cursor:.*:skip20$/),
       'cursor-live-first-page',

@@ -221,39 +221,68 @@ export async function advancedSearch(
   }
 
   if (skip > 0) {
+    const pageSize = params.limit || IMDB_PAGE_SIZE;
     const cursorKey = buildCursorCacheKey(filterHash, skip);
     try {
       let cursor = (await cache.get(cursorKey)) as string | null;
       if (!cursor) {
-        const pageSize = params.limit || IMDB_PAGE_SIZE;
-        const previousSkip = skip - pageSize;
-        if (previousSkip >= 0) {
-          await advancedSearch(params, contentType, previousSkip);
-          cursor = (await cache.get(cursorKey)) as string | null;
+        if (skip % pageSize !== 0) {
+          log.debug('Skip is not aligned to page size, returning empty', {
+            skip,
+            pageSize,
+            filterHash,
+          });
+          return { titles: [], pageInfo: { hasNextPage: false, endCursor: null } };
         }
 
-        if (!cursor && previousSkip === 0) {
-          const firstPageData = (await imdbFetch(
+        let walkingSkip = 0;
+        let walkingCursor: string | null = null;
+
+        while (walkingSkip < skip) {
+          const nextSkip = walkingSkip + pageSize;
+          const nextCursorKey = buildCursorCacheKey(filterHash, nextSkip);
+
+          const cachedNextCursor = (await cache.get(nextCursorKey)) as string | null;
+          if (cachedNextCursor) {
+            walkingCursor = cachedNextCursor;
+            walkingSkip = nextSkip;
+            continue;
+          }
+
+          const walkQueryParams: Record<string, string | number | boolean | string[] | undefined> =
+            {
+              ...queryParams,
+            };
+          if (walkingCursor) {
+            walkQueryParams.endCursor = walkingCursor;
+          }
+
+          const walkPageData = (await imdbFetch(
             '/api/imdb/search/advanced',
-            queryParams,
+            walkQueryParams,
             ttl
           )) as ImdbSearchResult;
 
           try {
-            await cache.set(buildCatalogCacheKey(filterHash, 0), firstPageData, ttl);
+            await cache.set(buildCatalogCacheKey(filterHash, walkingSkip), walkPageData, ttl);
           } catch (err) {
             logSwallowedError('imdb:discover:cache-set-catalog-backfill', err);
           }
 
-          if (firstPageData.pageInfo?.endCursor) {
-            try {
-              await cache.set(cursorKey, firstPageData.pageInfo.endCursor, ttl);
-              cursor = firstPageData.pageInfo.endCursor;
-            } catch (err) {
-              logSwallowedError('imdb:discover:cache-set-cursor-backfill', err);
-            }
+          if (!walkPageData.pageInfo?.endCursor) {
+            break;
           }
+
+          walkingCursor = walkPageData.pageInfo.endCursor;
+          try {
+            await cache.set(nextCursorKey, walkingCursor, ttl);
+          } catch (err) {
+            logSwallowedError('imdb:discover:cache-set-cursor-backfill', err);
+          }
+          walkingSkip = nextSkip;
         }
+
+        cursor = walkingSkip === skip ? walkingCursor : null;
       }
 
       if (cursor) {

@@ -184,9 +184,7 @@ async function getImdbEpisodesForSeason(
 function mapImdbEpisodesToStremioVideos(
   imdbId: string,
   season: number,
-  episodes: ImdbEpisodeEdge[],
-  seasonPosterMap: Record<number, string>,
-  seriesBackdrop: string | null
+  episodes: ImdbEpisodeEdge[]
 ): StremioVideo[] {
   return episodes
     .map((ep): StremioVideo | null => {
@@ -235,36 +233,47 @@ function mapImdbEpisodesToStremioVideos(
     .filter((v): v is StremioVideo => v !== null);
 }
 
-function mergeSeriesVideos(primary: StremioVideo[], fallback: StremioVideo[]): StremioVideo[] {
-  const merged = new Map<string, StremioVideo>();
+function mergeSeriesVideos(tmdbVideos: StremioVideo[], imdbVideos: StremioVideo[]): StremioVideo[] {
+  const tmdbMap = new Map<string, StremioVideo>();
+  const imdbMap = new Map<string, StremioVideo>();
 
-  for (const v of primary) {
-    merged.set(`${v.season}:${v.episode}`, { ...v });
-  }
+  for (const v of tmdbVideos) tmdbMap.set(`${v.season}:${v.episode}`, { ...v });
+  for (const v of imdbVideos) imdbMap.set(`${v.season}:${v.episode}`, { ...v });
 
-  for (const fb of fallback) {
-    const key = `${fb.season}:${fb.episode}`;
-    const current = merged.get(key);
-    if (!current) {
-      merged.set(key, { ...fb });
+  const allKeys = new Set([...tmdbMap.keys(), ...imdbMap.keys()]);
+  const merged: StremioVideo[] = [];
+
+  for (const key of allKeys) {
+    const tmdb = tmdbMap.get(key);
+    const imdbEp = imdbMap.get(key);
+
+    if (!tmdb && !imdbEp) continue;
+    if (!tmdb) {
+      merged.push(imdbEp!);
+      continue;
+    }
+    if (!imdbEp) {
+      merged.push(tmdb);
       continue;
     }
 
-    const isGenericTmdbTitle =
-      !current.title || new RegExp(`^Episode\\s+${current.episode}$`, 'i').test(current.title);
+    const isGenericTitle =
+      !tmdb.title || new RegExp(`^Episode\\s+${tmdb.episode}$`, 'i').test(tmdb.title);
 
-    merged.set(key, {
-      ...current,
-      title: isGenericTmdbTitle && fb.title ? fb.title : current.title,
-      overview: current.overview || fb.overview,
-      released: current.released || fb.released,
-      thumbnail: fb.thumbnail || current.thumbnail,
-      runtime: current.runtime || fb.runtime,
-      available: current.available ?? fb.available,
+    merged.push({
+      id: tmdb.id,
+      season: tmdb.season,
+      episode: tmdb.episode,
+      title: isGenericTitle && imdbEp.title ? imdbEp.title : tmdb.title,
+      overview: imdbEp.overview || tmdb.overview,
+      released: tmdb.released || imdbEp.released,
+      thumbnail: imdbEp.thumbnail || tmdb.thumbnail,
+      runtime: tmdb.runtime || imdbEp.runtime,
+      available: tmdb.available ?? imdbEp.available,
     });
   }
 
-  return Array.from(merged.values()).sort((a, b) => {
+  return merged.sort((a, b) => {
     if (a.season !== b.season) return a.season - b.season;
     return a.episode - b.episode;
   });
@@ -367,13 +376,7 @@ export async function getSeriesEpisodes(
           try {
             const episodeEdges = await getImdbEpisodesForSeason(imdbId, season.season_number);
             if (!episodeEdges.length) return [];
-            return mapImdbEpisodesToStremioVideos(
-              imdbId,
-              season.season_number,
-              episodeEdges,
-              seasonPosterMap,
-              seriesBackdrop
-            );
+            return mapImdbEpisodesToStremioVideos(imdbId, season.season_number, episodeEdges);
           } catch (error) {
             log.debug('IMDb season episode fetch failed', {
               imdbId,

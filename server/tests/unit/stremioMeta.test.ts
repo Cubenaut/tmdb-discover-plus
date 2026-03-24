@@ -4,6 +4,7 @@ import {
   generateSlug,
   toStremioMeta,
   toStremioMetaPreview,
+  toStremioFullMeta,
 } from '../../src/services/tmdb/stremioMeta.ts';
 
 vi.mock('../../src/services/posterService.ts', () => ({
@@ -133,5 +134,100 @@ describe('toStremioMetaPreview — poster fallbacks', () => {
     } as any;
     const result = await toStremioMetaPreview(details, 'movie');
     expect(result?.poster).toBeNull();
+  });
+});
+
+describe('toStremioFullMeta — poster fallbacks', () => {
+  const baseFullDetails = {
+    id: 200,
+    title: 'Test Movie Full',
+    overview: 'desc',
+    genres: [],
+    credits: { cast: [], crew: [] },
+    images: {},
+    external_ids: {},
+    release_dates: { results: [] },
+  };
+
+  it('uses poster_path when available', async () => {
+    const details = { ...baseFullDetails, poster_path: '/poster.jpg' } as any;
+    const result = await toStremioFullMeta(details, 'movie');
+    expect(result?.poster).toContain('/poster.jpg');
+  });
+
+  it('falls back to images.posters when poster_path is null', async () => {
+    const details = {
+      ...baseFullDetails,
+      poster_path: null,
+      images: { posters: [{ file_path: '/alt.jpg' }] },
+    } as any;
+    const result = await toStremioFullMeta(details, 'movie');
+    expect(result?.poster).toContain('/alt.jpg');
+  });
+
+  it('falls back to metahub poster when no TMDB poster', async () => {
+    const details = {
+      ...baseFullDetails,
+      poster_path: null,
+      images: { posters: [] },
+      external_ids: { imdb_id: 'tt9999999' },
+    } as any;
+    const result = await toStremioFullMeta(details, 'movie');
+    expect(result?.poster).toContain('tt9999999');
+    expect(result?.poster).toContain('metahub.space');
+  });
+
+  it('falls back to metahub background when no TMDB backdrop', async () => {
+    const details = {
+      ...baseFullDetails,
+      poster_path: '/poster.jpg',
+      backdrop_path: null,
+      images: { backdrops: [] },
+      external_ids: { imdb_id: 'tt9999999' },
+    } as any;
+    const result = await toStremioFullMeta(details, 'movie');
+    expect(result?.background).toContain('tt9999999');
+    expect(result?.background).toContain('metahub.space');
+  });
+});
+
+describe('toStremioMeta — poster fallbacks', () => {
+  it('uses poster_path when available', () => {
+    const item = {
+      id: 1,
+      title: 'Movie',
+      poster_path: '/poster.jpg',
+      overview: '',
+      genre_ids: [],
+    } as any;
+    const result = toStremioMeta(item, 'movie');
+    expect(result.poster).toContain('/poster.jpg');
+  });
+
+  it('falls back to metahub when no poster_path and imdbId is available', () => {
+    const item = { id: 1, title: 'Movie', poster_path: null, overview: '', genre_ids: [] } as any;
+    const result = toStremioMeta(item, 'movie', 'tt5555555');
+    expect(result.poster).toContain('tt5555555');
+    expect(result.poster).toContain('metahub.space');
+  });
+
+  it('falls back to metahub background when no backdrop_path', () => {
+    const item = {
+      id: 1,
+      title: 'Movie',
+      poster_path: '/p.jpg',
+      backdrop_path: null,
+      overview: '',
+      genre_ids: [],
+    } as any;
+    const result = toStremioMeta(item, 'movie', 'tt5555555');
+    expect(result.background).toContain('tt5555555');
+    expect(result.background).toContain('metahub.space');
+  });
+
+  it('leaves poster null when no TMDB poster and no imdbId', () => {
+    const item = { id: 1, title: 'Movie', poster_path: null, overview: '', genre_ids: [] } as any;
+    const result = toStremioMeta(item, 'movie');
+    expect(result.poster).toBeNull();
   });
 });

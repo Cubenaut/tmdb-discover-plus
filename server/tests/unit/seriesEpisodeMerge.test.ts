@@ -120,4 +120,27 @@ describe('getSeriesEpisodes — thumbnail priority', () => {
 
     expect(ep!.id).toBe('tt1234567:1:1');
   });
+
+  it('prefers IMDb overview over TMDB', async () => {
+    mockedFetch.mockResolvedValue(makeTmdbSeasonResponse('/tmdb-still.jpg'));
+    mockedImdb.mockResolvedValue(makeImdbSeasonResponse(IMDB_STILL));
+
+    const videos = await getSeriesEpisodes('api-key', 123, BASE_DETAILS as any);
+    const ep = videos.find((v) => v.season === 1 && v.episode === 1);
+
+    expect(ep!.overview).toBe('IMDb overview');
+  });
+
+  it('includes IMDb-only episodes not present in TMDB', async () => {
+    mockedFetch.mockResolvedValue({
+      episodes: [],
+    });
+    mockedImdb.mockResolvedValue(makeImdbSeasonResponse(IMDB_STILL));
+
+    const videos = await getSeriesEpisodes('api-key', 123, BASE_DETAILS as any);
+    const ep = videos.find((v) => v.season === 1 && v.episode === 1);
+
+    expect(ep).toBeDefined();
+    expect(ep!.thumbnail).toBe(IMDB_STILL);
+  });
 });

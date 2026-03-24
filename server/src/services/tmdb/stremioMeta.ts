@@ -476,8 +476,14 @@ export async function toStremioFullMeta(
   if (!poster && details.images?.posters && details.images.posters.length > 0) {
     poster = `${TMDB_IMAGE_BASE}/w780${details.images.posters[0].file_path}`;
   }
+  if (!poster && effectiveImdbId) {
+    poster = metahubUrl('poster', effectiveImdbId);
+  }
   if (!background && details.images?.backdrops && details.images.backdrops.length > 0) {
     background = `${TMDB_IMAGE_BASE}/original${details.images.backdrops[0].file_path}`;
+  }
+  if (!background && effectiveImdbId) {
+    background = metahubUrl('background', effectiveImdbId);
   }
 
   const responseId = requestedId || `tmdb:${details.id}`;
@@ -577,6 +583,12 @@ export function toStremioMeta(
       imdbId: effectiveImdbId,
     });
     if (enhancedPoster) poster = enhancedPoster;
+  }
+  if (!poster && effectiveImdbId) {
+    poster = metahubUrl('poster', effectiveImdbId);
+  }
+  if (!background && effectiveImdbId) {
+    background = metahubUrl('background', effectiveImdbId);
   }
   const primaryId = effectiveImdbId || `tmdb:${item.id}`;
 

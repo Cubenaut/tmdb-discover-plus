@@ -88,10 +88,6 @@ export function useActiveFilters({
       });
     }
 
-    if (filters.genreMatchMode === 'all' && filters.genres?.length > 1) {
-      active.push({ key: 'genreMatchMode', label: 'Genre match: ALL', section: 'genres' });
-    }
-
     if (filters.language) {
       const lang = originalLanguages.find((l) => l.iso_639_1 === filters.language);
       active.push({

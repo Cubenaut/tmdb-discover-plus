@@ -87,9 +87,9 @@ export async function discover(apiKey: string, options: DiscoverOptions = {}): P
     params.with_genres = genres.join(separator);
   }
   if (excludeGenres.length > 0) {
-    params.without_genres = excludeGenres.join(',');
+    // Pipe (|) means OR in TMDB. We want to exclude movies that have ANY of the excluded genres.
+    params.without_genres = excludeGenres.join('|');
   }
-
   if (mediaType === 'movie') {
     const useRegionalRelease = Boolean(region);
     const dateKey = useRegionalRelease ? 'release_date' : 'primary_release_date';

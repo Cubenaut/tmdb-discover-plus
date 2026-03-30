@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { Check, X } from 'lucide-react';
 import { Skeleton } from '../../layout/Skeleton';
+import { SmoothExpand } from '../../layout/SmoothExpand';
 
 export const GenreSelector = memo(function GenreSelector({
   genres,
@@ -69,33 +70,37 @@ export const GenreSelector = memo(function GenreSelector({
         </span>
       </div>
 
-      {showMatchMode && selectedGenres.length >= 2 && (
-        <div className="genre-match-mode-box">
+      <SmoothExpand show={showMatchMode}>
+        <div className={`genre-match-mode-box`}>
           <div className="genre-match-mode-label">How should multiple genres be matched?</div>
-          <div className="genre-match-mode-options">
-            <label className={`genre-match-option ${genreMatchMode === 'any' ? 'active' : ''}`}>
-              <input
-                type="radio"
-                name="genreMatchMode"
-                value="any"
-                checked={genreMatchMode === 'any'}
-                onChange={() => onSetMatchMode('any')}
-              />
-              <span className="option-text">Match ANY (more results)</span>
-            </label>
-            <label className={`genre-match-option ${genreMatchMode === 'all' ? 'active' : ''}`}>
-              <input
-                type="radio"
-                name="genreMatchMode"
-                value="all"
-                checked={genreMatchMode === 'all'}
-                onChange={() => onSetMatchMode('all')}
-              />
-              <span className="option-text">Match ALL (specific results)</span>
-            </label>
+          <div
+            className={`genre-match-mode-toggle ${selectedGenres.length < 2 ? 'disabled' : ''}`}
+            role="radiogroup"
+          >
+            <div className={`genre-match-mode-indicator pos-${genreMatchMode}`} />
+            <button
+              type="button"
+              role="radio"
+              aria-checked={genreMatchMode === 'any'}
+              disabled={selectedGenres.length < 2}
+              className={`genre-match-mode-toggle-btn ${genreMatchMode === 'any' ? 'active' : ''}`}
+              onClick={() => onSetMatchMode('any')}
+            >
+              ANY
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={genreMatchMode === 'all'}
+              disabled={selectedGenres.length < 2}
+              className={`genre-match-mode-toggle-btn ${genreMatchMode === 'all' ? 'active' : ''}`}
+              onClick={() => onSetMatchMode('all')}
+            >
+              ALL
+            </button>
           </div>
         </div>
-      )}
+      </SmoothExpand>
 
       <div className="genre-grid tristate" role="group" aria-label="Genre filter">
         {[...genres]
@@ -121,14 +126,16 @@ export const GenreSelector = memo(function GenreSelector({
                 }
               >
                 <span className="genre-chip-label">{genre.name}</span>
-                {state === 'include' && <Check size={14} aria-hidden="true" />}
-                {state === 'exclude' && <X size={14} aria-hidden="true" />}
+                <span className="genre-chip-icon-wrapper">
+                  <Check size={14} className="genre-icon include-icon" aria-hidden="true" />
+                  <X size={14} className="genre-icon exclude-icon" aria-hidden="true" />
+                </span>
               </button>
             );
           })}
       </div>
 
-      {(selectedGenres.length > 0 || excludedGenres.length > 0) && (
+      <SmoothExpand show={selectedGenres.length > 0 || excludedGenres.length > 0}>
         <div className="genre-summary" role="status" aria-live="polite">
           {selectedGenres.length > 0 && (
             <div className="genre-summary-row include">
@@ -159,7 +166,7 @@ export const GenreSelector = memo(function GenreSelector({
             </div>
           )}
         </div>
-      )}
+      </SmoothExpand>
     </>
   );
 });

@@ -64,13 +64,10 @@
 /* Mobile "Slim App Bar" Header */
 @media (max-width: 767px) {
   .header {
-    padding: 0;
-    height: 60px;
-    background: rgba(15, 23, 42, 0.85); /* Darker, more solid background */
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    position: sticky;
-    top: 0;
+    padding: 16px 0;
+    height: auto;
+    background: transparent;
+    position: relative;
     z-index: 100;
   }
 
@@ -80,35 +77,38 @@
   }
 
   .header .container {
-    height: 100%;
     max-width: none;
     padding: 0 16px;
   }
 
   .header-content {
-    flex-direction: row;
-    height: 100%;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    justify-content: center;
+    text-align: center;
+    gap: 16px;
     margin: 0;
     max-width: none;
   }
 
   .logo {
-    flex-direction: row;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
     align-items: center;
   }
 
+  .header-title-row {
+    justify-content: center;
+  }
+
   .logo-image {
-    width: 32px;
-    height: 32px;
+    width: 48px;
+    height: 48px;
     padding: 0;
     background: transparent;
     border: none;
     box-shadow: none;
-    border-radius: var(--radius-md);
+    margin: 0;
   }
 
   .logo-image:hover {
@@ -116,7 +116,7 @@
   }
 
   .logo h1 {
-    font-size: 1.125rem;
+    font-size: 1.5rem;
     background: none;
     -webkit-text-fill-color: initial;
     color: var(--text-primary);
@@ -124,7 +124,7 @@
   }
 
   .logo-subtitle {
-    display: none; /* Hide subtitle to save vertical space */
+    display: block;
   }
 
   /* Compact Stats */
@@ -140,14 +140,28 @@
   .mobile-actions {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
   }
 
   .header-actions {
-    display: block; /* Ensure container is visible */
+    display: flex;
+    justify-content: center;
     margin-top: 0;
-    width: auto;
-    margin-left: auto; /* Push actions to the right */
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .btn-switch-stable-mobile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    padding: 6px 16px;
+    background: rgba(255, 255, 255, 0.05); /* Match layout.css style */
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-full);
+    margin: 0; /* Reset any desktop margins */
   }
 }
 
@@ -473,8 +487,18 @@
   }
 
   .genre-chip {
-    padding: 8px 12px;
+    padding: 0 16px;
     font-size: 0.75rem;
+    min-width: 90px;
+  }
+
+  .genre-chip-icon-wrapper {
+    right: 8px;
+  }
+
+  .genre-chip.tristate.include .genre-chip-label,
+  .genre-chip.tristate.exclude .genre-chip-label {
+    transform: translateX(-8px);
   }
 }
 
@@ -705,21 +729,27 @@
   }
 
   .date-preset {
-    padding: 10px 14px;
-    font-size: 0.8125rem;
-    min-height: 44px;
+    padding: 8px 16px;
+    font-size: 0.75rem;
+    min-height: 36px;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+  }
+
+  .last-x-years-input-group {
+    height: 36px;
+    padding: 0 14px 0 4px;
+  }
+
+  .last-x-years-input {
+    height: 34px !important;
+    font-size: 0.8125rem !important;
   }
 
   .date-presets,
   .runtime-presets {
     flex-wrap: wrap;
-  }
-
-  .genre-instructions {
-    flex-direction: column;
-    gap: 4px;
   }
 }
 

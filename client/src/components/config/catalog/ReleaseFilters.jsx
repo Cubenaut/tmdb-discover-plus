@@ -50,9 +50,6 @@ export const ReleaseFilters = memo(function ReleaseFilters({
     return years;
   }, []);
 
-  const selectedDatePreset =
-    DATE_PRESETS.find((p) => p.value === localCatalog?.filters?.datePreset)?.label || null;
-
   const dateRangeError = useMemo(() => {
     const fromKey = isMovie ? 'releaseDateFrom' : 'airDateFrom';
     const toKey = isMovie ? 'releaseDateTo' : 'airDateTo';
@@ -95,14 +92,6 @@ export const ReleaseFilters = memo(function ReleaseFilters({
     [isMovie, onFiltersChange]
   );
 
-  const handleClearDatePreset = useCallback(() => {
-    const fromKey = isMovie ? 'releaseDateFrom' : 'airDateFrom';
-    const toKey = isMovie ? 'releaseDateTo' : 'airDateTo';
-    onFiltersChange('datePreset', undefined);
-    onFiltersChange(fromKey, undefined);
-    onFiltersChange(toKey, undefined);
-  }, [isMovie, onFiltersChange]);
-
   const handleLastXYears = useCallback(
     (value) => {
       const fromKey = isMovie ? 'releaseDateFrom' : 'airDateFrom';
@@ -123,91 +112,51 @@ export const ReleaseFilters = memo(function ReleaseFilters({
 
   return (
     <>
-      <div className="date-presets">
-        <div className="date-preset-row">
-          <span className="date-preset-label">Last</span>
-          <div className="date-preset-group">
-            {DATE_PRESETS.filter((p) => p.group === 'last').map((preset) => (
-              <button
-                key={preset.label}
-                className={`date-preset ${selectedDatePreset === preset.label ? 'active' : ''}`}
-                onClick={() => handleDatePreset(preset)}
-              >
-                {preset.label}
-              </button>
-            ))}
+      <div className="filter-group" style={{ marginTop: '12px' }}>
+        <div className="date-quick-presets">
+          {[
+            { l: '30d', v: 'last_30_days' },
+            { l: '90d', v: 'last_90_days' },
+            { l: '6mo', v: 'last_180_days' },
+            { l: '1y', v: 'last_365_days' },
+            { l: 'Upcoming', v: 'next_30_days' },
+          ].map((p) => (
+            <button
+              key={p.v}
+              className={`date-preset ${localCatalog?.filters?.datePreset === p.v ? 'active' : ''}`}
+              onClick={() => handleDatePreset({ label: p.l, value: p.v })}
+            >
+              {p.l}
+            </button>
+          ))}
+          <div className="date-quick-presets-divider" />
+          {[5, 10].map((n) => (
+            <button
+              key={n}
+              className={`date-preset ${localCatalog?.filters?.lastXYears === n ? 'active' : ''}`}
+              onClick={() =>
+                handleLastXYears(localCatalog?.filters?.lastXYears === n ? undefined : n)
+              }
+            >
+              {n}y
+            </button>
+          ))}
+          <div className="last-x-years-input-group">
+            <input
+              type="number"
+              className="input last-x-years-input"
+              min="1"
+              max="100"
+              placeholder="#"
+              value={localCatalog?.filters?.lastXYears ?? ''}
+              onChange={(e) => {
+                const v = e.target.value;
+                handleLastXYears(v ? Math.max(1, Math.min(100, Number(v))) : undefined);
+              }}
+            />
+            <span className="last-x-years-label">yr</span>
           </div>
         </div>
-        <div className="date-preset-row">
-          <span className="date-preset-label">Next</span>
-          <div className="date-preset-group">
-            {DATE_PRESETS.filter((p) => p.group === 'next').map((preset) => (
-              <button
-                key={preset.label}
-                className={`date-preset ${selectedDatePreset === preset.label ? 'active' : ''}`}
-                onClick={() => handleDatePreset(preset)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="date-preset-row">
-          <span className="date-preset-label">Era</span>
-          <div className="date-preset-group">
-            {DATE_PRESETS.filter((p) => p.group === 'decade').map((preset) => (
-              <button
-                key={preset.label}
-                className={`date-preset ${selectedDatePreset === preset.label ? 'active' : ''}`}
-                onClick={() => handleDatePreset(preset)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="date-preset-row">
-          <span className="date-preset-label">Years</span>
-          <div className="date-preset-group">
-            {[3, 5, 10, 15, 20].map((n) => (
-              <button
-                key={n}
-                className={`date-preset ${localCatalog?.filters?.lastXYears === n ? 'active' : ''}`}
-                onClick={() =>
-                  handleLastXYears(localCatalog?.filters?.lastXYears === n ? undefined : n)
-                }
-              >
-                Last {n}y
-              </button>
-            ))}
-            <div className="last-x-years-input-group">
-              <input
-                type="number"
-                className="input last-x-years-input"
-                min="1"
-                max="100"
-                placeholder="Custom"
-                value={localCatalog?.filters?.lastXYears ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  handleLastXYears(v ? Math.max(1, Math.min(100, Number(v))) : undefined);
-                }}
-              />
-              <span className="last-x-years-label">years</span>
-            </div>
-          </div>
-        </div>
-        {(selectedDatePreset || localCatalog?.filters?.lastXYears) && (
-          <button
-            className="date-preset-clear"
-            onClick={() => {
-              handleClearDatePreset();
-              handleLastXYears(undefined);
-            }}
-          >
-            ✕ Clear
-          </button>
-        )}
       </div>
 
       <div className="filter-two-col">
@@ -274,31 +223,31 @@ export const ReleaseFilters = memo(function ReleaseFilters({
       </div>
       {dateRangeError && <span className="field-error">{dateRangeError}</span>}
 
-      <label className="checkbox-label-row" style={{ cursor: 'pointer', marginTop: '14px' }}>
-        <div
-          className={`checkbox ${localCatalog?.filters?.releasedOnly ? 'checked' : ''}`}
-          role="checkbox"
-          aria-checked={!!localCatalog?.filters?.releasedOnly}
-          tabIndex={0}
-          onClick={() => onFiltersChange('releasedOnly', !localCatalog?.filters?.releasedOnly)}
-          onKeyDown={(e) => {
-            if (e.key === ' ' || e.key === 'Enter') {
-              e.preventDefault();
-              onFiltersChange('releasedOnly', !localCatalog?.filters?.releasedOnly);
-            }
-          }}
-        >
-          {localCatalog?.filters?.releasedOnly && <Check size={14} />}
-        </div>
-        <LabelWithTooltip
-          label="Released only"
-          tooltip={
-            isMovie
-              ? 'Only show movies with a digital release on or before today. Filters out announced and in-production titles.'
-              : 'Only show TV series that have already started airing. Filters out announced shows with future air dates.'
+      <div
+        className={`released-only-card ${localCatalog?.filters?.releasedOnly ? 'active' : ''}`}
+        role="switch"
+        aria-checked={!!localCatalog?.filters?.releasedOnly}
+        tabIndex={0}
+        onClick={() => onFiltersChange('releasedOnly', !localCatalog?.filters?.releasedOnly)}
+        onKeyDown={(e) => {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            onFiltersChange('releasedOnly', !localCatalog?.filters?.releasedOnly);
           }
-        />
-      </label>
+        }}
+      >
+        <div className="released-only-content">
+          <span className="released-only-title">Released Only</span>
+          <span className="released-only-desc">
+            {isMovie
+              ? 'Show only movies with a digital release'
+              : 'Show only TV series that have already started airing'}
+          </span>
+        </div>
+        <div className="released-only-toggle">
+          <div className="released-only-thumb" />
+        </div>
+      </div>
 
       {!isMovie && (
         <div className="filter-two-col" style={{ marginTop: '16px' }}>

@@ -131,12 +131,14 @@
 
   .editor-content {
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .preview-panel-container {
     flex: 0.8;
     min-width: 320px;
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .preview-panel-container .preview-grid {

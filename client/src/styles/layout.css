@@ -116,13 +116,10 @@
 
 /* Header */
 .header {
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  padding: 10px 0;
-  position: sticky;
-  top: 0;
+  background: transparent;
+  padding: 24px 0 16px;
+  position: relative;
   z-index: 100;
-  backdrop-filter: blur(12px);
 }
 
 .header-content {

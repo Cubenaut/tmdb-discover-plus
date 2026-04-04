@@ -36,6 +36,9 @@ export function useCatalogEditorHandlers({
   setSearchedNetworks,
   onPreview,
   onPreviewImdb,
+  onPreviewAnilist,
+  onPreviewMal,
+  onPreviewSimkl,
   selectedPeople,
   selectedCompanies,
   selectedImdbPeople,
@@ -132,9 +135,13 @@ export function useCatalogEditorHandlers({
           type,
           filters: {
             ...nextTypeFilters,
-            genres: [],
-            excludeGenres: [],
-            sortBy: isImdb ? 'POPULARITY' : 'popularity.desc',
+            genres: prev.source === 'tmdb' || isImdb ? [] : nextTypeFilters.genres || [],
+            excludeGenres:
+              prev.source === 'tmdb' || isImdb ? [] : nextTypeFilters.excludeGenres || [],
+            sortBy:
+              nextTypeFilters.sortBy !== undefined
+                ? nextTypeFilters.sortBy
+                : getSource(prev.source || 'tmdb').defaultFilters?.sortBy,
             awardsWon,
             awardsNominated,
             rankedList,
@@ -221,6 +228,12 @@ export function useCatalogEditorHandlers({
           excludeCompanies: selectedImdbExcludeCompanies.map((c) => c.id),
         };
         data = await onPreviewImdb(localCatalog.type || 'movie', imdbFilters);
+      } else if (localCatalog.source === 'anilist' && onPreviewAnilist) {
+        data = await onPreviewAnilist(localCatalog.type || 'movie', localCatalog.filters || {});
+      } else if (localCatalog.source === 'mal' && onPreviewMal) {
+        data = await onPreviewMal(localCatalog.type || 'movie', localCatalog.filters || {});
+      } else if (localCatalog.source === 'simkl' && onPreviewSimkl) {
+        data = await onPreviewSimkl(localCatalog.type || 'movie', localCatalog.filters || {});
       } else {
         const filters = {
           ...localCatalog.filters,
@@ -243,6 +256,9 @@ export function useCatalogEditorHandlers({
     localCatalog,
     onPreview,
     onPreviewImdb,
+    onPreviewAnilist,
+    onPreviewMal,
+    onPreviewSimkl,
     preferences?.defaultLanguage,
     selectedPeople,
     selectedCompanies,

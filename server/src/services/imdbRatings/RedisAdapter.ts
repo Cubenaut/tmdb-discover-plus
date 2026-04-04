@@ -80,11 +80,11 @@ export class RedisAdapter extends ImdbRatingsAdapter {
 
     for (let i = 0; i < entries.length; i += PIPELINE_BATCH) {
       const batch = entries.slice(i, i + PIPELINE_BATCH);
-      const pipeline = this.client.multi();
+      const map: Record<string, string> = {};
       for (const [id, val] of batch) {
-        pipeline.hSet(RATINGS_HASH, id, val);
+        map[id] = val;
       }
-      await pipeline.exec();
+      await this.client.hSet(RATINGS_HASH, map);
     }
   }
 
@@ -101,11 +101,11 @@ export class RedisAdapter extends ImdbRatingsAdapter {
 
     for (let i = 0; i < entries.length; i += PIPELINE_BATCH) {
       const batch = entries.slice(i, i + PIPELINE_BATCH);
-      const pipeline = this.client.multi();
+      const map: Record<string, string> = {};
       for (const [id, val] of batch) {
-        pipeline.hSet(stagingKey, id, val);
+        map[id] = val;
       }
-      await pipeline.exec();
+      await this.client.hSet(stagingKey, map);
     }
 
     await this.client.multi().del(RATINGS_HASH).rename(stagingKey, RATINGS_HASH).exec();

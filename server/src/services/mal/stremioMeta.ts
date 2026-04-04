@@ -1,17 +1,24 @@
-import { malIdToStremioId } from '../animeIdMap/index.ts';
+import { getEntryByMalId, malIdToStremioId } from '../animeIdMap/index.ts';
 import type { MalAnime } from './types.ts';
 import type { StremioMetaPreview } from '../../types/stremio.ts';
+import type { StremioLink } from '../../types/stremio.ts';
 import type { ContentType } from '../../types/common.ts';
+import { generateSlug } from '../common/stremioHelpers.ts';
 
 export function malToStremioMeta(anime: MalAnime, type: ContentType): StremioMetaPreview | null {
   const stremioId = malIdToStremioId(anime.id);
   if (!stremioId) return null;
 
+  const mapEntry = getEntryByMalId(anime.id);
+  const imdbId = mapEntry?.imdb_id || (stremioId.startsWith('tt') ? stremioId : null);
+  const primaryId = imdbId || stremioId;
+  const tmdbId = mapEntry?.themoviedb_id ?? 0;
+
   const poster = anime.main_picture?.large || anime.main_picture?.medium || '';
   const title = anime.alternative_titles?.en || anime.title;
   const genres = anime.genres?.map((g) => g.name) || [];
 
-  const links: Array<{ name: string; category: string; url: string }> = [];
+  const links: StremioLink[] = [];
   if (anime.studios) {
     for (const studio of anime.studios) {
       links.push({
@@ -31,15 +38,24 @@ export function malToStremioMeta(anime: MalAnime, type: ContentType): StremioMet
   }
 
   return {
-    id: stremioId,
+    id: primaryId,
+    tmdbId,
+    imdbId,
+    imdb_id: imdbId,
     type,
     name: title,
-    poster,
+    slug: generateSlug(type, title, primaryId),
+    poster: poster || null,
+    posterShape: 'poster',
+    background: null,
+    fanart: null,
+    landscapePoster: null,
     description: anime.synopsis || '',
     genres,
-    links,
-    releaseInfo: releaseInfo.join(' ') || undefined,
+    links: links.length > 0 ? links : undefined,
+    releaseInfo: releaseInfo.join(' '),
     imdbRating: anime.mean ? anime.mean.toFixed(1) : undefined,
+    behaviorHints: {},
   };
 }
 

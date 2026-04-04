@@ -96,7 +96,8 @@ export async function saveUserConfig(config: UserConfig): Promise<UserConfig> {
         log.error('Failed to encrypt MAL client ID', { error: (err as Error).message });
       }
     }
-    delete (config as Record<string, unknown>).malClientId;
+    const { malClientId: _rawMalClientId, ...configWithoutMalClientId } = config;
+    config = configWithoutMalClientId;
   }
 
   // Encrypt Simkl API key if provided as raw value
@@ -109,7 +110,8 @@ export async function saveUserConfig(config: UserConfig): Promise<UserConfig> {
         log.error('Failed to encrypt Simkl API key', { error: (err as Error).message });
       }
     }
-    delete (config as Record<string, unknown>).simklApiKey;
+    const { simklApiKey: _rawSimklApiKey, ...configWithoutSimklApiKey } = config;
+    config = configWithoutSimklApiKey;
   }
 
   const processedCatalogs = (config.catalogs || []).map((c) => {

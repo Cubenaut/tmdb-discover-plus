@@ -2,7 +2,9 @@ import { simklIdToStremioId, malIdToStremioId, getEntryBySimklId } from '../anim
 import { SIMKL_IMAGE_BASE } from './types.ts';
 import type { SimklAnime, SimklTrendingItem, SimklSearchResult } from './types.ts';
 import type { StremioMetaPreview } from '../../types/stremio.ts';
+import type { StremioLink } from '../../types/stremio.ts';
 import type { ContentType } from '../../types/common.ts';
+import { generateSlug } from '../common/stremioHelpers.ts';
 
 function resolveStremioId(ids: SimklAnime['ids']): string | null {
   // Direct IMDB ID from Simkl's response
@@ -49,18 +51,46 @@ export function simklToStremioMeta(
   const stremioId = resolveStremioId(anime.ids);
   if (!stremioId) return null;
 
+  const simklRawId = anime.ids.simkl ?? anime.ids.simkl_id;
+  const simklId = simklRawId != null ? parseInt(String(simklRawId), 10) : NaN;
+  const mapEntry = Number.isNaN(simklId) ? undefined : getEntryBySimklId(simklId);
+  const imdbId =
+    anime.ids.imdb || mapEntry?.imdb_id || (stremioId.startsWith('tt') ? stremioId : null);
+  const primaryId = imdbId || stremioId;
+  const tmdbId = mapEntry?.themoviedb_id ?? 0;
+
   const rating = anime.ratings?.simkl?.rating || anime.ratings?.mal?.rating;
 
+  const poster = buildPosterUrl(anime.poster) || null;
+  const background = buildFanartUrl(anime.fanart) || null;
+  const links: StremioLink[] = [];
+  if (imdbId) {
+    links.push({
+      name: rating ? rating.toFixed(1) : 'IMDb',
+      category: 'imdb',
+      url: `https://imdb.com/title/${imdbId}`,
+    });
+  }
+
   const meta: StremioMetaPreview = {
-    id: stremioId,
+    id: primaryId,
+    tmdbId,
+    imdbId,
+    imdb_id: imdbId,
     type,
     name: anime.title,
-    poster: buildPosterUrl(anime.poster),
-    background: buildFanartUrl(anime.fanart),
+    slug: generateSlug(type, anime.title, primaryId),
+    poster,
+    posterShape: 'poster',
+    background,
+    fanart: background,
+    landscapePoster: background,
     genres: ('genres' in anime && anime.genres) || [],
     description: ('overview' in anime && anime.overview) || '',
-    releaseInfo: anime.year ? String(anime.year) : undefined,
+    releaseInfo: anime.year ? String(anime.year) : '',
     imdbRating: rating ? rating.toFixed(1) : undefined,
+    links: links.length > 0 ? links : undefined,
+    behaviorHints: {},
   };
 
   return meta;

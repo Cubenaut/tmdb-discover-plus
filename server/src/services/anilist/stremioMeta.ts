@@ -1,7 +1,9 @@
 import { anilistIdToStremioId, getEntryByAnilistId } from '../animeIdMap/index.ts';
 import type { AnilistMedia } from './types.ts';
 import type { StremioMetaPreview } from '../../types/stremio.ts';
+import type { StremioLink, StremioTrailer } from '../../types/stremio.ts';
 import type { ContentType } from '../../types/common.ts';
+import { generateSlug } from '../common/stremioHelpers.ts';
 
 function stripHtml(text: string): string {
   return text
@@ -18,6 +20,11 @@ export function anilistToStremioMeta(
   const stremioId = anilistIdToStremioId(media.id);
   if (!stremioId) return null;
 
+  const mapEntry = getEntryByAnilistId(media.id);
+  const imdbId = mapEntry?.imdb_id || (stremioId.startsWith('tt') ? stremioId : null);
+  const primaryId = imdbId || stremioId;
+  const tmdbId = mapEntry?.themoviedb_id ?? 0;
+
   const title = media.title?.english || media.title?.romaji || media.title?.native || 'Unknown';
 
   const poster = media.coverImage?.extraLarge || media.coverImage?.large || '';
@@ -26,7 +33,7 @@ export function anilistToStremioMeta(
 
   const genres = media.genres || [];
 
-  const links: Array<{ name: string; category: string; url: string }> = [];
+  const links: StremioLink[] = [];
   const animationStudios = media.studios?.nodes?.filter((s) => s.isAnimationStudio) || [];
   for (const studio of animationStudios) {
     links.push({
@@ -41,21 +48,29 @@ export function anilistToStremioMeta(
   else if (media.startDate?.year) releaseInfo.push(String(media.startDate.year));
   if (media.season) releaseInfo.push(media.season);
 
-  const meta: StremioMetaPreview = {
-    id: stremioId,
+  const meta: StremioMetaPreview & { trailers?: StremioTrailer[] } = {
+    id: primaryId,
+    tmdbId,
+    imdbId,
+    imdb_id: imdbId,
     type,
     name: title,
-    poster,
-    background,
+    slug: generateSlug(type, title, primaryId),
+    poster: poster || null,
+    posterShape: 'poster',
+    background: background || null,
+    fanart: background || null,
+    landscapePoster: background || null,
     description,
     genres,
-    links,
-    releaseInfo: releaseInfo.join(' ') || undefined,
+    links: links.length > 0 ? links : undefined,
+    releaseInfo: releaseInfo.join(' '),
     imdbRating: media.averageScore ? (media.averageScore / 10).toFixed(1) : undefined,
+    behaviorHints: {},
   };
 
   if (media.trailer?.site === 'youtube' && media.trailer.id) {
-    (meta as Record<string, unknown>).trailers = [{ source: media.trailer.id, type: 'Trailer' }];
+    meta.trailers = [{ source: media.trailer.id, type: 'Trailer' }];
   }
 
   return meta;

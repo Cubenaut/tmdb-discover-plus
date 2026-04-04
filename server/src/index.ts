@@ -110,19 +110,25 @@ app.use(compression({ threshold: 1024 }));
 
 const CSP_POLICY = {
   'default-src': ["'self'"],
-  'script-src': ["'self'"],
+  'script-src': ["'self'", 'https://static.cloudflareinsights.com'],
   'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
   'img-src': [
     "'self'",
     'https://docs.elfhosted.com',
     'https://image.tmdb.org',
+    'https://s4.anilist.co',
     'https://storage.ko-fi.com',
     'https://m.media-amazon.com',
     'https://ia.media-imdb.com',
     'data:',
   ],
   'font-src': ["'self'", 'https://fonts.gstatic.com'],
-  'connect-src': ["'self'", 'https://api.themoviedb.org'],
+  'connect-src': [
+    "'self'",
+    'https://api.themoviedb.org',
+    'https://static.cloudflareinsights.com',
+    'https://cloudflareinsights.com',
+  ],
   'frame-ancestors': ["'none'"],
   'base-uri': ["'self'"],
   'form-action': ["'self'"],

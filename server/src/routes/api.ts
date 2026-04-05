@@ -909,20 +909,64 @@ const PREVIEW_MAX_BACKFILL = 5;
 router.post('/anilist/preview', requireAuth, async (req, res) => {
   try {
     const { filters, type } = req.body;
+    const safeFilters = filters || {};
+    const hasStudioFilter = Array.isArray(safeFilters.studios) && safeFilters.studios.length > 0;
+    const randomize = Boolean(safeFilters.randomize || safeFilters.sortBy === 'random');
     const contentType = (type === 'series' ? 'series' : 'movie') as ContentType;
     const metas: import('../types/stremio.ts').StremioMetaPreview[] = [];
+    let totalResults: number | null = null;
     let page = 1;
-    let pages = 0;
-    while (metas.length < PREVIEW_PAGE_SIZE && pages < PREVIEW_MAX_BACKFILL) {
-      const result = await anilist.browse(filters || {}, contentType, page);
-      metas.push(...anilist.batchConvertToStremioMeta(result.media, contentType));
-      pages++;
-      if (!result.hasNextPage || result.media.length === 0) break;
-      page++;
+
+    if (randomize) {
+      const probe = await anilist.browse(safeFilters, contentType, 1);
+      totalResults = probe.total;
+      const lastPage = Math.ceil(probe.total / 50) || 1;
+      page = Math.floor(Math.random() * Math.min(lastPage, 50)) + 1;
     }
-    res.json({ metas: metas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
+
+    if (hasStudioFilter && !randomize) {
+      const pageNumbers = Array.from({ length: PREVIEW_MAX_BACKFILL }, (_, i) => i + 1);
+      const batched = await anilist.browseBatch(safeFilters, contentType, pageNumbers);
+      if (batched[0]) totalResults = batched[0].total;
+
+      for (const result of batched) {
+        metas.push(...anilist.batchConvertToStremioMeta(result.media, contentType));
+        if (metas.length >= PREVIEW_PAGE_SIZE) break;
+      }
+    } else {
+      let pages = 0;
+      while (metas.length < PREVIEW_PAGE_SIZE && pages < PREVIEW_MAX_BACKFILL) {
+        const result = await anilist.browse(safeFilters, contentType, page);
+        if (totalResults == null) totalResults = result.total;
+        metas.push(...anilist.batchConvertToStremioMeta(result.media, contentType));
+        pages++;
+        if (!result.hasNextPage || result.media.length === 0) break;
+        page++;
+      }
+    }
+
+    const previewMetas = randomize ? shuffleArray(metas) : metas;
+    const previewTotalResults = hasStudioFilter ? null : totalResults;
+    res.json({
+      metas: previewMetas.slice(0, PREVIEW_PAGE_SIZE),
+      totalResults: previewTotalResults,
+    });
   } catch (error) {
     log.error('POST /anilist/preview error', { error: (error as Error).message });
+    sendError(res, 500, ErrorCodes.INTERNAL_ERROR, safeErrorMessage(error as Error));
+  }
+});
+
+router.get('/anilist/studios', requireAuth, async (req, res) => {
+  try {
+    const query = String(req.query.q || '').trim();
+    if (!query || query.length < 2) {
+      return res.json({ studios: [] });
+    }
+    const studios = await anilist.searchStudios(query);
+    res.json({ studios });
+  } catch (error) {
+    log.error('GET /anilist/studios error', { error: (error as Error).message });
     sendError(res, 500, ErrorCodes.INTERNAL_ERROR, safeErrorMessage(error as Error));
   }
 });
@@ -930,18 +974,32 @@ router.post('/anilist/preview', requireAuth, async (req, res) => {
 router.post('/mal/preview', requireAuth, async (req, res) => {
   try {
     const { filters, type } = req.body;
+    const safeFilters = filters || {};
+    const randomize = Boolean(safeFilters.randomize || safeFilters.sortBy === 'random');
     const contentType = (type === 'series' ? 'series' : 'movie') as ContentType;
     const metas: import('../types/stremio.ts').StremioMetaPreview[] = [];
+    let totalResults: number | null = null;
     let page = 1;
+
+    if (randomize) {
+      const probe = await mal.discover(safeFilters, contentType, 1);
+      totalResults = probe.total;
+      const totalPages = Math.ceil(probe.total / 25) || 1;
+      page = Math.floor(Math.random() * Math.min(totalPages, 20)) + 1;
+    }
+
     let pages = 0;
     while (metas.length < PREVIEW_PAGE_SIZE && pages < PREVIEW_MAX_BACKFILL) {
-      const result = await mal.discover(filters || {}, contentType, page);
+      const result = await mal.discover(safeFilters, contentType, page);
+      if (totalResults == null) totalResults = result.total;
       metas.push(...mal.batchConvertToStremioMeta(result.anime, contentType));
       pages++;
       if (!result.hasMore || result.anime.length === 0) break;
       page++;
     }
-    res.json({ metas: metas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
+
+    const previewMetas = randomize ? shuffleArray(metas) : metas;
+    res.json({ metas: previewMetas.slice(0, PREVIEW_PAGE_SIZE), totalResults });
   } catch (error) {
     log.error('POST /mal/preview error', { error: (error as Error).message });
     sendError(res, 500, ErrorCodes.INTERNAL_ERROR, safeErrorMessage(error as Error));
@@ -951,9 +1009,11 @@ router.post('/mal/preview', requireAuth, async (req, res) => {
 router.post('/simkl/preview', requireAuth, async (req, res) => {
   try {
     const { filters, type } = req.body;
-    const listType = (filters || {}).simklListType || 'trending';
+    const safeFilters = filters || {};
+    const listType = safeFilters.simklListType || 'trending';
+    const randomize = Boolean(safeFilters.randomize || safeFilters.sortBy === 'random');
 
-    // Trending uses CDN (no API key needed), other list types need server-side key
+    // Trending uses CDN (no API key needed), other list types need an API key
     const simklApiKey: string | null = config.simklApi.clientId || null;
     if (!simklApiKey && listType !== 'trending') {
       return sendError(
@@ -966,20 +1026,30 @@ router.post('/simkl/preview', requireAuth, async (req, res) => {
     const contentType = (type === 'series' ? 'series' : 'movie') as ContentType;
     const metas: import('../types/stremio.ts').StremioMetaPreview[] = [];
     let page = 1;
+
+    if (randomize) {
+      const probe = await simkl.discover(safeFilters, contentType, 1, simklApiKey || undefined);
+      if (listType === 'trending' || listType === 'airing') {
+        const previewMetas = shuffleArray(
+          simkl.batchConvertToStremioMeta(probe.items, contentType)
+        );
+        return res.json({ metas: previewMetas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
+      }
+      const maxPage = probe.hasMore ? 5 : 1;
+      page = Math.floor(Math.random() * maxPage) + 1;
+    }
+
     let pages = 0;
     while (metas.length < PREVIEW_PAGE_SIZE && pages < PREVIEW_MAX_BACKFILL) {
-      const result = await simkl.discover(
-        filters || {},
-        contentType,
-        page,
-        simklApiKey || undefined
-      );
+      const result = await simkl.discover(safeFilters, contentType, page, simklApiKey || undefined);
       metas.push(...simkl.batchConvertToStremioMeta(result.items, contentType));
       pages++;
       if (!result.hasMore || result.items.length === 0) break;
       page++;
     }
-    res.json({ metas: metas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
+
+    const previewMetas = randomize ? shuffleArray(metas) : metas;
+    res.json({ metas: previewMetas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
   } catch (error) {
     log.error('POST /simkl/preview error', { error: (error as Error).message });
     sendError(res, 500, ErrorCodes.INTERNAL_ERROR, safeErrorMessage(error as Error));

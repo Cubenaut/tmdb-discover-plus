@@ -37,6 +37,9 @@ export interface AnilistMedia {
   studios?: {
     nodes?: Array<{ id: number; name: string; isAnimationStudio?: boolean }>;
   };
+  staff?: {
+    edges?: Array<{ role: string; node: { id: number; name: { full?: string } } }>;
+  };
   nextAiringEpisode?: {
     airingAt: number;
     episode: number;

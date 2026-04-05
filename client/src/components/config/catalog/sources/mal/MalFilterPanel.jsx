@@ -88,7 +88,7 @@ export function MalFilterPanel({
     return count;
   };
 
-  const getOptionsBadge = () => (filters.randomize ? 1 : 0);
+  const getOptionsBadge = () => (filters.randomize ? 1 : 0) + (filters.includeAdult ? 1 : 0);
 
   const hasAdvancedFilters =
     (filters.malGenres || []).length > 0 ||
@@ -346,13 +346,20 @@ export function MalFilterPanel({
       <FilterSection
         id="options"
         title="Options"
-        description="Randomization settings"
+        description="Adult content and randomization"
         icon={Eye}
         isOpen={expandedSections?.options}
         onToggle={onToggleSection}
         badgeCount={getOptionsBadge()}
       >
         <div className="checkbox-grid">
+          <Checkbox
+            checked={!!filters.includeAdult}
+            onChange={(checked) => onFiltersChange('includeAdult', checked || undefined)}
+            label="Include adult content"
+            tooltip="Include adult/18+ rated anime in results."
+          />
+
           <Checkbox
             checked={!!filters.randomize}
             onChange={(checked) => onFiltersChange('randomize', checked || undefined)}

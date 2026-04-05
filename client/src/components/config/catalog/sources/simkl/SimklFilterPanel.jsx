@@ -5,6 +5,7 @@ import { GenreSelector } from '../../GenreSelector';
 import { SearchableSelect } from '../../../../forms/SearchableSelect';
 import { LabelWithTooltip } from '../../../../forms/Tooltip';
 import { AnimeFormatSelector } from '../../shared/AnimeFormatSelector';
+import { Checkbox } from '../../../../forms/Checkbox';
 
 export function SimklFilterPanel({
   localCatalog,
@@ -60,7 +61,7 @@ export function SimklFilterPanel({
     return filters.simklType && filters.simklType !== 'all' ? 1 : 0;
   };
 
-  const getOptionsBadge = () => (filters.randomize ? 1 : 0);
+  const getOptionsBadge = () => (filters.randomize ? 1 : 0) + (filters.includeAdult ? 1 : 0);
 
   return (
     <>
@@ -84,6 +85,9 @@ export function SimklFilterPanel({
             onChange={(vals) => {
               const newType = vals[vals.length - 1] || 'trending';
               onFiltersChange('simklListType', newType);
+              if (newType !== 'genre') {
+                onFiltersChange('simklGenre', undefined);
+              }
             }}
           />
         </div>
@@ -186,13 +190,20 @@ export function SimklFilterPanel({
       <FilterSection
         id="options"
         title="Options"
-        description="Randomization settings"
+        description="Adult content and randomization"
         icon={Eye}
         isOpen={expandedSections?.options}
         onToggle={onToggleSection}
         badgeCount={getOptionsBadge()}
       >
         <div className="checkbox-grid">
+          <Checkbox
+            checked={!!filters.includeAdult}
+            onChange={(checked) => onFiltersChange('includeAdult', checked || undefined)}
+            label="Include adult content"
+            tooltip="Include adult/18+ anime where available."
+          />
+
           <label className="checkbox-label-row" style={{ cursor: 'pointer' }}>
             <div
               className={`checkbox ${filters.randomize ? 'checked' : ''}`}

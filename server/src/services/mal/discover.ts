@@ -19,11 +19,12 @@ function contentTypeToJikanType(type: ContentType): string {
 export async function getRanking(
   rankingType: string,
   type: ContentType,
-  page: number
+  page: number,
+  includeAdult?: boolean
 ): Promise<{ anime: MalAnime[]; hasMore: boolean; total: number }> {
   const params = new URLSearchParams();
   params.set('page', String(page));
-  params.set('sfw', 'true');
+  params.set('sfw', includeAdult ? 'false' : 'true');
 
   // Ranking types that ARE a type filter (tv, movie, ova, special)
   const typeRankings = ['tv', 'movie', 'ova', 'special', 'ona', 'music'];
@@ -31,16 +32,12 @@ export async function getRanking(
   const filterRankings = ['airing', 'upcoming', 'bypopularity', 'favorite'];
 
   if (typeRankings.includes(rankingType)) {
-    // User explicitly chose a type-specific ranking — use it as-is
     params.set('type', rankingType);
   } else if (filterRankings.includes(rankingType)) {
-    // Filter-based ranking — also pass the content type for native filtering
     params.set('filter', rankingType);
     params.set('type', contentTypeToJikanType(type));
-  } else {
-    // Default "all" ranking — filter by content type
-    params.set('type', contentTypeToJikanType(type));
   }
+  // "all" ranking: no type filter — returns the overall top anime list
 
   const path = `/top/anime?${params.toString()}`;
   log.debug('Jikan ranking', { rankingType, type, page });
@@ -63,11 +60,12 @@ export async function getSeasonal(
   season: string,
   sort: string | undefined,
   type: ContentType,
-  page: number
+  page: number,
+  includeAdult?: boolean
 ): Promise<{ anime: MalAnime[]; hasMore: boolean; total: number }> {
   const params = new URLSearchParams();
   params.set('page', String(page));
-  params.set('sfw', 'true');
+  params.set('sfw', includeAdult ? 'false' : 'true');
   params.set('filter', contentTypeToJikanType(type));
 
   const path = `/seasons/${year}/${season}?${params.toString()}`;
@@ -89,12 +87,13 @@ export async function getSeasonal(
 export async function searchAnime(
   query: string,
   type: ContentType,
-  page: number
+  page: number,
+  includeAdult?: boolean
 ): Promise<{ anime: MalAnime[]; hasMore: boolean; total: number }> {
   const params = new URLSearchParams();
   params.set('q', query);
   params.set('page', String(page));
-  params.set('sfw', 'true');
+  params.set('sfw', includeAdult ? 'false' : 'true');
   params.set('type', contentTypeToJikanType(type));
   params.set('order_by', 'members');
   params.set('sort', 'desc');
@@ -119,17 +118,25 @@ export async function searchAnime(
 export async function browseAnime(
   filters: MalCatalogFilters,
   type: ContentType,
-  page: number
+  page: number,
+  includeAdult?: boolean
 ): Promise<{ anime: MalAnime[]; hasMore: boolean; total: number }> {
   const params = new URLSearchParams();
   params.set('page', String(page));
-  params.set('sfw', 'true');
+  params.set('sfw', includeAdult ? 'false' : 'true');
 
-  // Media type: use explicit filter or infer from content type
+  // Media type:
+  // - If user explicitly picked one, use it.
+  // - For movie catalogs, default to movie.
+  // - For series catalogs, omit type to allow TV/OVA/ONA/special results,
+  //   then filter out movies client-side after fetch.
+  let shouldFilterOutMovies = false;
   if (filters.malMediaType && filters.malMediaType.length > 0) {
     params.set('type', filters.malMediaType[0]);
-  } else {
+  } else if (type === 'movie') {
     params.set('type', contentTypeToJikanType(type));
+  } else {
+    shouldFilterOutMovies = true;
   }
 
   // Status
@@ -173,7 +180,11 @@ export async function browseAnime(
   log.debug('Jikan browse', { type, page, filters: Object.fromEntries(params) });
 
   const response = await jikanFetch<JikanResponse>(path);
-  const anime = response.data.map(jikanToMalAnime);
+  let anime = response.data.map(jikanToMalAnime);
+
+  if (shouldFilterOutMovies) {
+    anime = anime.filter((item) => item.media_type !== 'movie');
+  }
 
   return {
     anime,
@@ -190,8 +201,17 @@ export async function discover(
   type: ContentType,
   page: number
 ): Promise<{ anime: MalAnime[]; hasMore: boolean; total: number }> {
+  const includeAdult = filters.includeAdult;
+
   if (filters.malSeason && filters.malSeasonYear) {
-    return getSeasonal(filters.malSeasonYear, filters.malSeason, filters.malSort, type, page);
+    return getSeasonal(
+      filters.malSeasonYear,
+      filters.malSeason,
+      filters.malSort,
+      type,
+      page,
+      includeAdult
+    );
   }
 
   const hasAdvancedFilters =
@@ -205,9 +225,9 @@ export async function discover(
     filters.malOrderBy;
 
   if (hasAdvancedFilters) {
-    return browseAnime(filters, type, page);
+    return browseAnime(filters, type, page, includeAdult);
   }
 
   const rankingType = filters.malRankingType || 'all';
-  return getRanking(rankingType, type, page);
+  return getRanking(rankingType, type, page, includeAdult);
 }

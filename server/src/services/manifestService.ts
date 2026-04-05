@@ -17,12 +17,15 @@ const ADDON_VARIANT = config.addon.variant;
 const ADDON_ID = ADDON_VARIANT
   ? `community.tmdb.discover.plus.${ADDON_VARIANT}`
   : 'community.tmdb.discover.plus';
-const ADDON_NAME = 'TMDB Discover+';
+const BASE_ADDON_NAME = 'TMDB Discover+';
 const ADDON_DESCRIPTION = 'Create custom movie and TV catalogs with powerful TMDB filters';
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
 const ADDON_VERSION = pkg.version;
 export function buildManifest(userConfig: UserConfig | null, baseUrl: string): StremioManifest {
   const resolvedBaseUrl = config.baseUrl || baseUrl;
+  const addonName = userConfig?.configName
+    ? `${BASE_ADDON_NAME} - ${userConfig.configName}`
+    : BASE_ADDON_NAME;
   const catalogs: ManifestCatalog[] = (userConfig?.catalogs || [])
     .filter((c) => c.enabled !== false)
     .map((catalog) => {
@@ -40,18 +43,20 @@ export function buildManifest(userConfig: UserConfig | null, baseUrl: string): S
     });
 
   if (userConfig?.preferences?.disableSearch !== true) {
-    catalogs.push({
-      id: 'tmdb-search-movie',
-      type: 'movie',
-      name: 'TMDB Search',
-      extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
-    });
-    catalogs.push({
-      id: 'tmdb-search-series',
-      type: 'series',
-      name: 'TMDB Search',
-      extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
-    });
+    if (userConfig?.preferences?.disableTmdbSearch !== true) {
+      catalogs.push({
+        id: 'tmdb-search-movie',
+        type: 'movie',
+        name: 'TMDB Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+      catalogs.push({
+        id: 'tmdb-search-series',
+        type: 'series',
+        name: 'TMDB Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+    }
 
     if (isImdbApiEnabled() && userConfig?.preferences?.disableImdbSearch !== true) {
       catalogs.push({
@@ -67,11 +72,65 @@ export function buildManifest(userConfig: UserConfig | null, baseUrl: string): S
         extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
       });
     }
+
+    const hasAnilistCatalogs = (userConfig?.catalogs || []).some(
+      (c) => c.source === 'anilist' && c.enabled !== false
+    );
+    if (hasAnilistCatalogs && userConfig?.preferences?.disableAnilistSearch !== true) {
+      catalogs.push({
+        id: 'anilist-search-movie',
+        type: 'movie',
+        name: 'AniList Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+      catalogs.push({
+        id: 'anilist-search-series',
+        type: 'series',
+        name: 'AniList Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+    }
+
+    const hasMalCatalogs = (userConfig?.catalogs || []).some(
+      (c) => c.source === 'mal' && c.enabled !== false
+    );
+    if (hasMalCatalogs && userConfig?.preferences?.disableMalSearch !== true) {
+      catalogs.push({
+        id: 'mal-search-movie',
+        type: 'movie',
+        name: 'MAL Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+      catalogs.push({
+        id: 'mal-search-series',
+        type: 'series',
+        name: 'MAL Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+    }
+
+    const hasSimklCatalogs = (userConfig?.catalogs || []).some(
+      (c) => c.source === 'simkl' && c.enabled !== false
+    );
+    if (hasSimklCatalogs && userConfig?.preferences?.disableSimklSearch !== true) {
+      catalogs.push({
+        id: 'simkl-search-movie',
+        type: 'movie',
+        name: 'Simkl Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+      catalogs.push({
+        id: 'simkl-search-series',
+        type: 'series',
+        name: 'Simkl Search',
+        extra: [{ name: 'search', isRequired: true }, { name: 'skip' }],
+      });
+    }
   }
 
   return {
     id: ADDON_ID,
-    name: ADDON_NAME,
+    name: addonName,
     description: ADDON_DESCRIPTION,
     version: ADDON_VERSION,
     logo: `${resolvedBaseUrl.replace(/\/$/, '')}/logo.png`,
@@ -96,7 +155,7 @@ export async function enrichManifestWithGenres(
   await Promise.all(
     manifest.catalogs.map(async (catalog) => {
       try {
-        if (catalog.id.startsWith('tmdb-search-') || catalog.id.startsWith('imdb-search-')) return;
+        if (catalog.id.includes('-search-')) return;
 
         if (catalog.id.startsWith('imdb-')) {
           const savedCatalog = (config.catalogs || []).find((c) => {

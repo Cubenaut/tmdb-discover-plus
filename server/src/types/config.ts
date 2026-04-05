@@ -10,7 +10,11 @@ export interface UserPreferences {
   posterApiKeyEncrypted?: string;
   posterApiKey?: string;
   disableSearch?: boolean;
+  disableTmdbSearch?: boolean;
   disableImdbSearch?: boolean;
+  disableAnilistSearch?: boolean;
+  disableMalSearch?: boolean;
+  disableSimklSearch?: boolean;
   includeAdult?: boolean;
   region?: string;
   countries?: string;
@@ -133,6 +137,7 @@ export interface AnilistCatalogFilters extends BaseCatalogFilters {
   durationMin?: number;
   durationMax?: number;
   isAdult?: boolean;
+  studios?: number[];
 }
 
 export interface MalCatalogFilters extends BaseCatalogFilters {

@@ -1,11 +1,12 @@
 import type { Request, Response } from 'express';
 import type { ContentType } from '../../types/common.ts';
 import type { StremioMetaPreview, CatalogConfig } from '../../types/index.ts';
-import { getUserConfig } from '../../services/configService.ts';
+import { getUserConfig, getSimklKeyFromConfig } from '../../services/configService.ts';
 import { getCache } from '../../services/cache/index.ts';
 import * as simkl from '../../services/simkl/index.ts';
 import { config } from '../../config.ts';
 import { createLogger } from '../../utils/logger.ts';
+import { shuffleArray } from '../../utils/helpers.ts';
 import { CACHE_TTLS, buildCatalogId, catalogServerTtl } from '../../constants.ts';
 
 const log = createLogger('addon:simkl');
@@ -59,8 +60,8 @@ export async function handleSimklCatalogRequest(
       return;
     }
 
-    // Resolve Simkl API key: server-side only
-    const simklApiKey = config.simklApi.clientId || undefined;
+    // Resolve Simkl API key: server-side key, or user-provided key as fallback
+    const simklApiKey = config.simklApi.clientId || getSimklKeyFromConfig(userConfig) || undefined;
 
     // Search catalog
     if (catalogId === 'simkl-search-movie' || catalogId === 'simkl-search-series') {
@@ -82,7 +83,11 @@ export async function handleSimklCatalogRequest(
         query: searchQuery,
         durationMs: Date.now() - startTime,
       });
-      res.json({ metas });
+      res.json({
+        metas,
+        cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
+        staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+      });
       return;
     }
 
@@ -99,10 +104,14 @@ export async function handleSimklCatalogRequest(
 
     const filters = catalogConfig.filters || {};
     const listType = filters.simklListType || 'trending';
+    const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
 
     // Non-trending list types require an API key
     if (listType !== 'trending' && !simklApiKey) {
-      log.debug('Simkl API key not available for non-trending request', { userId, listType });
+      log.warn(
+        'Simkl API key not configured — non-trending list types require SIMKL_CLIENT_ID env var',
+        { userId, listType }
+      );
       res.json({ metas: [] });
       return;
     }
@@ -110,31 +119,64 @@ export async function handleSimklCatalogRequest(
     const cache = getCache();
     const cacheKey = `simkl:catalog:${catalogId}:${type}:${page}`;
 
-    const cached = await cache.get(cacheKey);
-    if (cached) {
+    if (!randomize) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        res.set(
+          'Cache-Control',
+          `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
+        );
+        res.json({
+          ...cached,
+          cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
+          staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+        });
+        return;
+      }
+    }
+
+    let metas: StremioMetaPreview[];
+    if (randomize) {
+      const probe = await simkl.discover(filters, type, 1, simklApiKey);
+      if (listType === 'trending' || listType === 'airing') {
+        metas = simkl.batchConvertToStremioMeta(probe.items, type);
+        metas = shuffleArray(metas).slice(0, PAGE_SIZE);
+      } else {
+        const maxPage = probe.hasMore ? 5 : 1;
+        const randomPage = Math.floor(Math.random() * maxPage) + 1;
+        metas = await fetchWithBackfill(
+          (p) => simkl.discover(filters, type, p, simklApiKey),
+          type,
+          randomPage
+        );
+        metas = shuffleArray(metas);
+      }
+    } else {
+      metas = await fetchWithBackfill(
+        (p) => simkl.discover(filters, type, p, simklApiKey),
+        type,
+        page
+      );
+    }
+
+    const response = { metas };
+
+    if (!randomize) {
+      const isTrending = listType === 'trending';
+      const ttl = catalogServerTtl(isTrending ? 'trending' : 'discover');
+      cache.set(cacheKey, response, ttl).catch(() => {});
+    }
+
+    if (randomize) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    } else {
       res.set(
         'Cache-Control',
         `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
       );
-      res.json(cached);
-      return;
     }
-
-    const metas = await fetchWithBackfill(
-      (p) => simkl.discover(filters, type, p, simklApiKey),
-      type,
-      page
-    );
-
-    const response = { metas };
-    const isTrending = filters.simklListType === 'trending';
-    const ttl = catalogServerTtl(isTrending ? 'trending' : 'discover');
-    cache.set(cacheKey, response, ttl).catch(() => {});
-
-    res.set(
-      'Cache-Control',
-      `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
-    );
 
     log.debug('Simkl catalog response', {
       catalogId,
@@ -143,7 +185,11 @@ export async function handleSimklCatalogRequest(
       durationMs: Date.now() - startTime,
     });
 
-    res.json(response);
+    res.json({
+      ...response,
+      cacheMaxAge: randomize ? 0 : CACHE_TTLS.CATALOG_HEADER,
+      staleRevalidate: randomize ? 0 : CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+    });
   } catch (err) {
     log.error('Simkl catalog error', {
       catalogId,

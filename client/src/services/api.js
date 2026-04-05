@@ -298,6 +298,15 @@ class ApiService {
     });
   }
 
+  async searchAnilistStudios(query) {
+    const result = await this.request(`/anilist/studios?q=${encodeURIComponent(query)}`);
+    return (result?.studios || []).map((s) => ({
+      id: s.id,
+      name: s.name,
+      isAnimationStudio: s.isAnimationStudio,
+    }));
+  }
+
   async previewMalCatalog(type, filters) {
     return this.request('/mal/preview', {
       method: 'POST',

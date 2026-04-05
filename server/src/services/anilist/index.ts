@@ -1,5 +1,5 @@
 export { anilistFetch } from './client.ts';
-export { browse, search } from './discover.ts';
+export { browse, browseBatch, search, searchStudios } from './discover.ts';
 export { anilistToStremioMeta, batchConvertToStremioMeta } from './stremioMeta.ts';
 export * from './reference.ts';
 export type { AnilistMedia, AnilistPageResponse, AnilistPageInfo } from './types.ts';

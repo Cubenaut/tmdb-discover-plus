@@ -491,6 +491,18 @@
   margin-top: 8px;
 }
 
+.sidebar-checkbox--indent {
+  margin-left: 22px;
+  font-size: 0.8125rem;
+}
+
+.search-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
 /* Preset Groups */
 .preset-group {
   margin-bottom: 16px;

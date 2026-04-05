@@ -25,6 +25,7 @@ export const MEDIA_FIELDS = `
   favourites
   isAdult
   studios { nodes { id name isAnimationStudio } }
+  staff(sort: RELEVANCE, perPage: 8) { edges { role node { id name { full } } } }
   nextAiringEpisode { airingAt episode timeUntilAiring }
   trailer { id site thumbnail }
   siteUrl
@@ -47,6 +48,20 @@ export const SEARCH_QUERY = `
       pageInfo { total perPage currentPage lastPage hasNextPage }
       media(search: $search, type: $type, format_in: $format_in, sort: [SEARCH_MATCH]) {
         ${MEDIA_FIELDS}
+      }
+    }
+  }
+`;
+
+export const STUDIO_SEARCH_QUERY = `
+  query ($search: String!, $page: Int, $perPage: Int) {
+    Page(page: $page, perPage: $perPage) {
+      pageInfo { total hasNextPage }
+      studios(search: $search) {
+        id
+        name
+        isAnimationStudio
+        siteUrl
       }
     }
   }

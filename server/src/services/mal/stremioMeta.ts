@@ -6,15 +6,15 @@ import type { ContentType } from '../../types/common.ts';
 import { generateSlug } from '../common/stremioHelpers.ts';
 
 export function malToStremioMeta(anime: MalAnime, type: ContentType): StremioMetaPreview | null {
-  const stremioId = malIdToStremioId(anime.id);
-  if (!stremioId) return null;
+  const mappedStremioId = malIdToStremioId(anime.id);
+  const stremioId = mappedStremioId || `mal:${anime.id}`;
 
   const mapEntry = getEntryByMalId(anime.id);
   const imdbId = mapEntry?.imdb_id || (stremioId.startsWith('tt') ? stremioId : null);
   const primaryId = imdbId || stremioId;
   const tmdbId = mapEntry?.themoviedb_id ?? 0;
 
-  const poster = anime.main_picture?.large || anime.main_picture?.medium || '';
+  const poster = anime.main_picture?.large || anime.main_picture?.medium || null;
   const title = anime.alternative_titles?.en || anime.title;
   const genres = anime.genres?.map((g) => g.name) || [];
 
@@ -45,7 +45,7 @@ export function malToStremioMeta(anime: MalAnime, type: ContentType): StremioMet
     type,
     name: title,
     slug: generateSlug(type, title, primaryId),
-    poster: poster || null,
+    poster: poster,
     posterShape: 'poster',
     background: null,
     fanart: null,

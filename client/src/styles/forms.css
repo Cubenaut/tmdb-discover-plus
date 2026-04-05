@@ -549,6 +549,10 @@ input[type='date'].input::-webkit-calendar-picker-indicator {
   color: var(--text-primary);
 }
 
+.multi-select-option:hover .multi-select-checkbox {
+  border-color: var(--text-secondary);
+}
+
 .multi-select-option.selected {
   background: rgba(130, 87, 229, 0.1);
   color: var(--accent-primary);

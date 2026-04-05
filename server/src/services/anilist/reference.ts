@@ -26,22 +26,45 @@ interface TagCollectionResponse {
 const TAG_COLLECTION_QUERY = `{ MediaTagCollection { name category isAdult } }`;
 
 let cachedTags: { value: string; label: string; category: string }[] | null = null;
+let cachedTagsAdult: { value: string; label: string; category: string }[] | null = null;
 let cacheTime = 0;
+let cacheTimeAdult = 0;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-async function fetchTagCollection(): Promise<{ value: string; label: string; category: string }[]> {
+async function fetchTagCollection(
+  includeAdult?: boolean
+): Promise<{ value: string; label: string; category: string }[]> {
   const now = Date.now();
-  if (cachedTags && now - cacheTime < CACHE_TTL_MS) return cachedTags;
+  if (includeAdult) {
+    if (cachedTagsAdult && now - cacheTimeAdult < CACHE_TTL_MS) return cachedTagsAdult;
+  } else {
+    if (cachedTags && now - cacheTime < CACHE_TTL_MS) return cachedTags;
+  }
 
   try {
     const resp = await anilistFetch<TagCollectionResponse>(TAG_COLLECTION_QUERY);
-    const tags = resp.data.MediaTagCollection.filter((t) => !t.isAdult)
-      .map((t) => ({ value: t.name, label: t.name, category: t.category }))
+    const allTags = resp.data.MediaTagCollection.map((t) => ({
+      value: t.name,
+      label: t.name,
+      category: t.category,
+      isAdult: t.isAdult,
+    }));
+
+    const sfwTags = allTags
+      .filter((t) => !t.isAdult)
+      .map(({ value, label, category }) => ({ value, label, category }))
       .sort((a, b) => a.label.localeCompare(b.label));
-    cachedTags = tags;
+    cachedTags = sfwTags;
     cacheTime = now;
-    log.info(`Fetched ${tags.length} AniList tags from API`);
-    return tags;
+
+    const allMapped = allTags
+      .map(({ value, label, category }) => ({ value, label, category }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    cachedTagsAdult = allMapped;
+    cacheTimeAdult = now;
+
+    log.info(`Fetched ${allMapped.length} AniList tags from API (${sfwTags.length} SFW)`);
+    return includeAdult ? allMapped : sfwTags;
   } catch (err) {
     log.warn('Failed to fetch AniList tags, using fallback', { error: (err as Error).message });
     return ANILIST_TAGS.map((t) => ({ value: t, label: t, category: '' }));
@@ -56,10 +79,10 @@ export function getTags(): readonly string[] {
   return ANILIST_TAGS;
 }
 
-export async function getTagsFromApi(): Promise<
-  { value: string; label: string; category: string }[]
-> {
-  return fetchTagCollection();
+export async function getTagsFromApi(
+  includeAdult?: boolean
+): Promise<{ value: string; label: string; category: string }[]> {
+  return fetchTagCollection(includeAdult);
 }
 
 export function getSortOptions(): readonly { value: string; label: string }[] {

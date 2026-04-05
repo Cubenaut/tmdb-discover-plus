@@ -246,6 +246,14 @@ export const ANILIST_SOURCE = {
       });
     }
 
+    if (filters.studios?.length > 0) {
+      active.push({
+        key: 'studios',
+        label: `Studios: ${filters.studios.length} selected`,
+        section: 'origin',
+      });
+    }
+
     if (filters.isAdult) {
       active.push({ key: 'isAdult', label: 'Adult content', section: 'options' });
     }

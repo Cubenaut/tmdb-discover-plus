@@ -43,6 +43,29 @@ export function anilistToStremioMeta(
     });
   }
 
+  const staffEdges = media.staff?.edges || [];
+  for (const edge of staffEdges) {
+    if (edge.node?.name?.full && edge.role) {
+      const role = edge.role.toLowerCase();
+      let category: 'Directors' | 'Writers' | 'Cast' | undefined;
+      if (role.includes('director')) category = 'Directors';
+      else if (
+        role.includes('script') ||
+        role.includes('writer') ||
+        role.includes('story') ||
+        role.includes('composition')
+      )
+        category = 'Writers';
+      if (category) {
+        links.push({
+          name: edge.node.name.full,
+          category,
+          url: `https://anilist.co/staff/${edge.node.id}`,
+        });
+      }
+    }
+  }
+
   const releaseInfo: string[] = [];
   if (media.seasonYear) releaseInfo.push(String(media.seasonYear));
   else if (media.startDate?.year) releaseInfo.push(String(media.startDate.year));

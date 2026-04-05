@@ -244,7 +244,7 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
 
             <label
               className="sidebar-checkbox sidebar-checkbox--spaced"
-              title="Disable search catalogs if you want to use other addons for search"
+              title="Disable all search catalogs"
             >
               <input
                 type="checkbox"
@@ -256,6 +256,79 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
               <EyeOff size={14} />
               <span>Disable Search</span>
             </label>
+
+            {!preferences?.disableSearch && (
+              <div className="search-toggles">
+                <label
+                  className="sidebar-checkbox sidebar-checkbox--indent"
+                  title="Disable TMDB search catalogs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!preferences?.disableTmdbSearch}
+                    onChange={(e) =>
+                      onPreferencesChange({ ...preferences, disableTmdbSearch: e.target.checked })
+                    }
+                  />
+                  <span>Disable TMDB Search</span>
+                </label>
+                <label
+                  className="sidebar-checkbox sidebar-checkbox--indent"
+                  title="Disable IMDb search catalogs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!preferences?.disableImdbSearch}
+                    onChange={(e) =>
+                      onPreferencesChange({ ...preferences, disableImdbSearch: e.target.checked })
+                    }
+                  />
+                  <span>Disable IMDb Search</span>
+                </label>
+                <label
+                  className="sidebar-checkbox sidebar-checkbox--indent"
+                  title="Disable AniList search catalogs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!preferences?.disableAnilistSearch}
+                    onChange={(e) =>
+                      onPreferencesChange({
+                        ...preferences,
+                        disableAnilistSearch: e.target.checked,
+                      })
+                    }
+                  />
+                  <span>Disable AniList Search</span>
+                </label>
+                <label
+                  className="sidebar-checkbox sidebar-checkbox--indent"
+                  title="Disable MAL search catalogs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!preferences?.disableMalSearch}
+                    onChange={(e) =>
+                      onPreferencesChange({ ...preferences, disableMalSearch: e.target.checked })
+                    }
+                  />
+                  <span>Disable MAL Search</span>
+                </label>
+                <label
+                  className="sidebar-checkbox sidebar-checkbox--indent"
+                  title="Disable Simkl search catalogs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!preferences?.disableSimklSearch}
+                    onChange={(e) =>
+                      onPreferencesChange({ ...preferences, disableSimklSearch: e.target.checked })
+                    }
+                  />
+                  <span>Disable Simkl Search</span>
+                </label>
+              </div>
+            )}
           </div>
 
           <GeneralSettingsSection />

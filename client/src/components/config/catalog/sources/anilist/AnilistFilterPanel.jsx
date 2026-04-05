@@ -1,5 +1,5 @@
-import { useMemo, useCallback } from 'react';
-import { Settings, Sparkles, Calendar, Star, Globe, Eye, Tag, Clock } from 'lucide-react';
+import { useMemo, useCallback, useState } from 'react';
+import { Settings, Sparkles, Calendar, Star, Globe, Eye, Tag, Clock, Building } from 'lucide-react';
 import { FilterSection } from '../../FilterSection';
 import { GenreSelector } from '../../GenreSelector';
 import { AnimeSeasonSelector } from '../../shared/AnimeSeasonSelector';
@@ -8,6 +8,8 @@ import { SearchableSelect } from '../../../../forms/SearchableSelect';
 import { MultiSelect } from '../../../../forms/MultiSelect';
 import { RangeSlider, SingleSlider } from '../../../../forms/RangeSlider';
 import { LabelWithTooltip } from '../../../../forms/Tooltip';
+import { SearchInput } from '../../../../forms/SearchInput';
+import { api } from '../../../../../services/api';
 
 import { Checkbox } from '../../../../forms/Checkbox';
 
@@ -28,6 +30,67 @@ export function AnilistFilterPanel({
 }) {
   const filters = localCatalog?.filters || {};
   const type = localCatalog?.type || 'movie';
+  const formSelectedStudios = localCatalog?.formState?.selectedStudios;
+  const filterStudioIds = filters.studios;
+
+  const [studioLabelById, setStudioLabelById] = useState(() => {
+    const initial = {};
+    const initialSelected = Array.isArray(localCatalog?.formState?.selectedStudios)
+      ? localCatalog.formState.selectedStudios
+      : [];
+    for (const studio of initialSelected) {
+      if (studio?.id != null && studio?.name) {
+        initial[Number(studio.id)] = studio.name;
+      }
+    }
+    return initial;
+  });
+
+  const searchAnilistStudios = useCallback(async (query) => {
+    return api.searchAnilistStudios(query);
+  }, []);
+
+  const selectedStudios = useMemo(() => {
+    if (Array.isArray(formSelectedStudios)) {
+      return formSelectedStudios
+        .filter((studio) => studio && studio.id != null)
+        .map((studio) => ({
+          id: Number(studio.id),
+          name: studio.name || studioLabelById[Number(studio.id)] || `Studio #${studio.id}`,
+        }));
+    }
+
+    if (Array.isArray(filterStudioIds) && filterStudioIds.length > 0) {
+      return filterStudioIds
+        .filter((id) => Number.isInteger(id) && id > 0)
+        .map((id) => ({ id, name: studioLabelById[id] || `Studio #${id}` }));
+    }
+
+    return [];
+  }, [formSelectedStudios, filterStudioIds, studioLabelById]);
+
+  const handleStudiosChange = useCallback(
+    (nextSelected) => {
+      const updated = Array.isArray(nextSelected)
+        ? nextSelected.filter((s) => s && s.id != null)
+        : [];
+      setStudioLabelById((prev) => {
+        const next = { ...prev };
+        for (const studio of updated) {
+          const id = Number(studio.id);
+          if (Number.isInteger(id) && id > 0 && studio.name) {
+            next[id] = studio.name;
+          }
+        }
+        return next;
+      });
+      const studioIds = updated
+        .map((s) => Number(s.id))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      onFiltersChange('studios', studioIds.length > 0 ? studioIds : undefined);
+    },
+    [onFiltersChange]
+  );
 
   const anilistGenreObjects = useMemo(
     () => anilistGenres.map((g) => ({ id: g, name: g })),
@@ -106,6 +169,7 @@ export function AnilistFilterPanel({
     let count = 0;
     if (filters.countryOfOrigin) count++;
     if ((filters.sourceMaterial || []).length > 0) count++;
+    if ((filters.studios || []).length > 0) count++;
     return count;
   };
 
@@ -318,8 +382,8 @@ export function AnilistFilterPanel({
 
       <FilterSection
         id="origin"
-        title="Origin & Source"
-        description="Country of origin and source material"
+        title="Origin, Source & Studios"
+        description="Country of origin, source material, and animation studios"
         icon={Globe}
         isOpen={expandedSections?.origin}
         onToggle={onToggleSection}
@@ -350,6 +414,21 @@ export function AnilistFilterPanel({
             selected={filters.sourceMaterial || []}
             options={anilistSourceOptions}
             onChange={(sources) => onFiltersChange('sourceMaterial', sources)}
+          />
+        </div>
+
+        <div className="filter-group">
+          <LabelWithTooltip
+            label="Studios"
+            tooltip="Filter by animation studio (e.g., Studio Ghibli, MADHOUSE, MAPPA)."
+          />
+          <SearchInput
+            type="company"
+            placeholder="Search animation studios..."
+            onSearch={searchAnilistStudios}
+            selectedItems={selectedStudios}
+            onSelect={handleStudiosChange}
+            onRemove={handleStudiosChange}
           />
         </div>
       </FilterSection>

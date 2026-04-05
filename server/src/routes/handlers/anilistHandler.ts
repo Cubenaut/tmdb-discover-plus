@@ -5,6 +5,7 @@ import { getUserConfig } from '../../services/configService.ts';
 import { getCache } from '../../services/cache/index.ts';
 import * as anilist from '../../services/anilist/index.ts';
 import { createLogger } from '../../utils/logger.ts';
+import { shuffleArray } from '../../utils/helpers.ts';
 import { CACHE_TTLS, buildCatalogId, catalogServerTtl } from '../../constants.ts';
 
 const log = createLogger('addon:anilist');
@@ -17,9 +18,7 @@ const MAX_BACKFILL_PAGES = 5;
  * may need to fetch additional pages to compensate.
  */
 async function fetchWithBackfill(
-  fetchPage: (
-    page: number
-  ) => Promise<{
+  fetchPage: (page: number) => Promise<{
     media: import('../../services/anilist/types.ts').AnilistMedia[];
     hasNextPage: boolean;
   }>,
@@ -83,7 +82,11 @@ export async function handleAnilistCatalogRequest(
         query: searchQuery,
         durationMs: Date.now() - startTime,
       });
-      res.json({ metas });
+      res.json({
+        metas,
+        cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
+        staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+      });
       return;
     }
 
@@ -99,33 +102,54 @@ export async function handleAnilistCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
+    const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
     const cache = getCache();
     const cacheKey = `anilist:catalog:${catalogId}:${type}:${page}`;
 
-    // Check cache
-    const cached = await cache.get(cacheKey);
-    if (cached) {
+    if (!randomize) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        res.set(
+          'Cache-Control',
+          `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
+        );
+        res.json({
+          ...cached,
+          cacheMaxAge: CACHE_TTLS.CATALOG_HEADER,
+          staleRevalidate: CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+        });
+        return;
+      }
+    }
+
+    let metas: StremioMetaPreview[];
+    if (randomize) {
+      const probe = await anilist.browse(filters, type, 1);
+      const lastPage = Math.ceil(probe.total / 50) || 1;
+      const randomPage = Math.floor(Math.random() * Math.min(lastPage, 50)) + 1;
+      metas = await fetchWithBackfill((p) => anilist.browse(filters, type, p), type, randomPage);
+      metas = shuffleArray(metas);
+    } else {
+      metas = await fetchWithBackfill((p) => anilist.browse(filters, type, p), type, page);
+    }
+
+    const response = { metas };
+
+    if (!randomize) {
+      const ttl = catalogServerTtl(filters.sortBy === 'TRENDING_DESC' ? 'trending' : 'discover');
+      cache.set(cacheKey, response, ttl).catch(() => {});
+    }
+
+    if (randomize) {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    } else {
       res.set(
         'Cache-Control',
         `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
       );
-      res.json(cached);
-      return;
     }
-
-    // Fetch from AniList with backfill
-    const metas = await fetchWithBackfill((p) => anilist.browse(filters, type, p), type, page);
-
-    const response = { metas };
-
-    // Cache the result
-    const ttl = catalogServerTtl(filters.sortBy === 'TRENDING_DESC' ? 'trending' : 'discover');
-    cache.set(cacheKey, response, ttl).catch(() => {});
-
-    res.set(
-      'Cache-Control',
-      `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
-    );
 
     log.debug('AniList catalog response', {
       catalogId,
@@ -134,7 +158,11 @@ export async function handleAnilistCatalogRequest(
       durationMs: Date.now() - startTime,
     });
 
-    res.json(response);
+    res.json({
+      ...response,
+      cacheMaxAge: randomize ? 0 : CACHE_TTLS.CATALOG_HEADER,
+      staleRevalidate: randomize ? 0 : CACHE_TTLS.CATALOG_STALE_REVALIDATE,
+    });
   } catch (err) {
     log.error('AniList catalog error', {
       catalogId,

@@ -6,6 +6,45 @@ import type { SimklCatalogFilters } from '../../types/config.ts';
 import type { ContentType } from '../../types/common.ts';
 
 const log = createLogger('simkl:discover');
+const ADULT_GENRES = new Set(['hentai', 'erotica', 'adult', 'sex']);
+
+function isAdultItem(item: SimklAnime | SimklTrendingItem): boolean {
+  const rawGenres = (item as { genres?: unknown }).genres;
+  const genres = Array.isArray(rawGenres)
+    ? rawGenres.map((g: unknown) => String(g).toLowerCase())
+    : [];
+  if (genres.some((g) => ADULT_GENRES.has(g))) return true;
+
+  const certification = String(
+    (item as { certification?: string }).certification || ''
+  ).toLowerCase();
+  if (
+    certification.includes('18+') ||
+    certification.includes('18') ||
+    certification.includes('nc-17') ||
+    certification === 'x'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function filterByTypeAndAdult(
+  items: (SimklAnime | SimklTrendingItem)[] | null | undefined,
+  type: ContentType,
+  includeAdult?: boolean
+): (SimklAnime | SimklTrendingItem)[] {
+  const safeItems = Array.isArray(items) ? items : [];
+
+  const typeFiltered = safeItems.filter((item) => {
+    if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
+    return item.anime_type !== 'movie' && item.anime_type !== 'movies';
+  });
+
+  if (includeAdult === true) return typeFiltered;
+  return typeFiltered.filter((item) => !isAdultItem(item));
+}
 
 export async function getTrending(period: string = 'week'): Promise<SimklTrendingItem[]> {
   log.debug('Simkl trending', { period });
@@ -89,6 +128,7 @@ export async function discover(
   apiKey?: string
 ): Promise<{ items: (SimklAnime | SimklTrendingItem)[]; hasMore: boolean }> {
   const listType = filters.simklListType || 'trending';
+  const includeAdult = filters.includeAdult === true;
   const simklType =
     type === 'movie'
       ? 'movies'
@@ -100,57 +140,38 @@ export async function discover(
     case 'trending': {
       const period = filters.simklTrendingPeriod || 'week';
       const items = await getTrending(period);
-      // Filter by type
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
       const start = (page - 1) * 20;
       return { items: filtered.slice(start, start + 20), hasMore: start + 20 < filtered.length };
     }
     case 'best': {
       const bestFilter = filters.simklBestFilter || 'all';
       const items = await getBest(bestFilter, simklType, page, apiKey);
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
-      return { items: filtered, hasMore: items.length >= 20 };
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
+      return { items: filtered, hasMore: Array.isArray(items) && items.length >= 20 };
     }
     case 'genre': {
       const genre = filters.simklGenre || 'Action';
       const sort = filters.simklSort || 'rank';
       const items = await getByGenre(genre, simklType, sort, page, apiKey);
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
-      return { items: filtered, hasMore: items.length >= 20 };
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
+      return { items: filtered, hasMore: Array.isArray(items) && items.length >= 20 };
     }
     case 'premieres': {
       const items = await getPremieres('new', simklType, page, apiKey);
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
-      return { items: filtered, hasMore: items.length >= 20 };
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
+      return { items: filtered, hasMore: Array.isArray(items) && items.length >= 20 };
     }
     case 'airing': {
       const items = await getAiring('today', 'rank', apiKey);
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
       const start = (page - 1) * 20;
       return { items: filtered.slice(start, start + 20), hasMore: start + 20 < filtered.length };
     }
     default: {
       const items = await getTrending('week');
       const start = (page - 1) * 20;
-      const filtered = items.filter((item) => {
-        if (type === 'movie') return item.anime_type === 'movie' || item.anime_type === 'movies';
-        return item.anime_type !== 'movie' && item.anime_type !== 'movies';
-      });
+      const filtered = filterByTypeAndAdult(items, type, includeAdult);
       return { items: filtered.slice(start, start + 20), hasMore: start + 20 < filtered.length };
     }
   }

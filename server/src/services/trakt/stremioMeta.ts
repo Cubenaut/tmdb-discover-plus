@@ -1,19 +1,34 @@
 import type { TraktMovie, TraktShow } from './types.ts';
 import type { StremioMetaPreview, StremioLink } from '../../types/stremio.ts';
 import type { ContentType } from '../../types/common.ts';
+import type { PosterOptions } from '../../types/config.ts';
 import { metahubUrl } from '../../constants.ts';
 import { generateSlug } from '../common/stremioHelpers.ts';
+import { generatePosterUrl, isValidPosterConfig } from '../posterService.ts';
 
 export function traktToStremioMeta(
   item: TraktMovie | TraktShow,
-  type: ContentType
+  type: ContentType,
+  posterOptions: PosterOptions | null = null
 ): StremioMetaPreview | null {
   const imdbId = item.ids.imdb;
   if (!imdbId) return null;
 
   const tmdbId = item.ids.tmdb ?? 0;
 
-  const poster = metahubUrl('poster', imdbId);
+  let poster = metahubUrl('poster', imdbId);
+  if (posterOptions && isValidPosterConfig(posterOptions)) {
+    const enhancedPoster = generatePosterUrl({
+      ...posterOptions,
+      tmdbId,
+      type,
+      imdbId,
+    });
+    if (enhancedPoster) {
+      poster = enhancedPoster;
+    }
+  }
+
   const background = metahubUrl('background', imdbId);
 
   const links: StremioLink[] = [];
@@ -50,11 +65,12 @@ export function traktToStremioMeta(
 
 export function batchConvertToStremioMeta(
   items: (TraktMovie | TraktShow)[],
-  type: ContentType
+  type: ContentType,
+  posterOptions: PosterOptions | null = null
 ): StremioMetaPreview[] {
   const results: StremioMetaPreview[] = [];
   for (const item of items) {
-    const meta = traktToStremioMeta(item, type);
+    const meta = traktToStremioMeta(item, type, posterOptions);
     if (meta) results.push(meta);
   }
   return results;

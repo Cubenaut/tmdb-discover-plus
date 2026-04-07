@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import { DATE_PRESETS } from '../constants/datePresets';
 import { getSource } from '../sources/index';
 import {
+  formatTraktCalendarWindowLabel,
   normalizeTraktListType,
   supportsTraktCalendarSettings,
   supportsTraktPeriod,
@@ -784,7 +785,8 @@ export function useActiveFilters({
 
     if (source === 'trakt') {
       const listType = normalizeTraktListType(filters.traktListType);
-      if (listType !== 'trending') {
+      const defaultCalendarSort = listType === 'recently_aired' ? 'desc' : 'asc';
+      if (listType !== 'calendar') {
         const allOptions = [...traktListTypes, ...traktCommunityMetrics];
         const typeLabel = getOptionLabel(allOptions, listType);
         active.push({ key: 'traktListType', label: `List: ${typeLabel}`, section: 'filters' });
@@ -808,12 +810,37 @@ export function useActiveFilters({
           section: 'filters',
         });
       }
-      if (filters.traktCalendarDays && supportsTraktCalendarSettings(listType)) {
-        const label =
-          listType === 'recently_aired'
-            ? `Last ${filters.traktCalendarDays} days`
-            : `Next ${filters.traktCalendarDays} days`;
-        active.push({ key: 'traktCalendarDays', label, section: 'filters' });
+      if (
+        supportsTraktCalendarSettings(listType) &&
+        filters.traktCalendarSort &&
+        filters.traktCalendarSort !== defaultCalendarSort
+      ) {
+        active.push({
+          key: 'traktCalendarSort',
+          label: `Date Order: ${filters.traktCalendarSort === 'desc' ? 'Descending' : 'Ascending'}`,
+          section: 'filters',
+        });
+      }
+      if (
+        supportsTraktCalendarSettings(listType) &&
+        (filters.traktCalendarStartDate || filters.traktCalendarEndDate)
+      ) {
+        active.push({
+          key: 'traktCalendarRange',
+          label: `Range: ${filters.traktCalendarStartDate || '...'} to ${filters.traktCalendarEndDate || '...'}`,
+          section: 'filters',
+        });
+      }
+      if (
+        filters.traktCalendarDays &&
+        supportsTraktCalendarSettings(listType) &&
+        !filters.traktCalendarStartDate &&
+        !filters.traktCalendarEndDate
+      ) {
+        const label = formatTraktCalendarWindowLabel(listType, filters.traktCalendarDays);
+        if (label) {
+          active.push({ key: 'traktCalendarDays', label, section: 'filters' });
+        }
       }
       if (filters.traktLanguages?.length) {
         active.push({
@@ -1202,7 +1229,14 @@ export function useActiveFilters({
           break;
         // --- Trakt specific ---
         case 'traktListType':
-          update({ traktListType: undefined });
+          update({
+            traktListType: undefined,
+            traktCalendarType: undefined,
+            traktCalendarDays: undefined,
+            traktCalendarStartDate: undefined,
+            traktCalendarEndDate: undefined,
+            traktCalendarSort: undefined,
+          });
           break;
         case 'traktPeriod':
           update({ traktPeriod: undefined });
@@ -1212,6 +1246,18 @@ export function useActiveFilters({
           break;
         case 'traktCalendarDays':
           update({ traktCalendarDays: undefined });
+          break;
+        case 'traktCalendarSort':
+          update({ traktCalendarSort: undefined });
+          break;
+        case 'traktCalendarRange':
+          update({ traktCalendarStartDate: undefined, traktCalendarEndDate: undefined });
+          break;
+        case 'traktCalendarStartDate':
+          update({ traktCalendarStartDate: undefined });
+          break;
+        case 'traktCalendarEndDate':
+          update({ traktCalendarEndDate: undefined });
           break;
         case 'traktLanguages':
           update({ traktLanguages: undefined });

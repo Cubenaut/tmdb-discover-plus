@@ -13,20 +13,40 @@ import {
   getAvailableBrowseTypes,
   getBrowseTypeForListType,
   getDefaultListTypeForBrowseType,
+  getTraktExternalRatingFilterSupport,
   getListTypeOptionsForBrowseType,
   normalizeTraktListType,
   supportsTraktAdvancedFilters,
   supportsTraktCalendarSettings,
+  supportsTraktCoreRatingVoteFilters,
+  supportsTraktDirectExternalRatingFilters,
   supportsTraktPeriod,
 } from '../../../../../sources/traktCapabilities';
 
 const CURRENT_YEAR = new Date().getFullYear();
-const CALENDAR_DAY_PRESETS = [
+const RECENTLY_AIRED_DAY_PRESETS = [
   { value: '30', label: '1 Month' },
   { value: '90', label: '3 Months' },
   { value: '180', label: '6 Months' },
   { value: '365', label: '12 Months' },
+  { value: '1095', label: '3 Years' },
+  { value: '1825', label: '5 Years' },
+  { value: '3650', label: '10 Years' },
 ];
+const CALENDAR_SORT_OPTIONS = [
+  { value: 'asc', label: 'Ascending (Oldest → Newest)' },
+  { value: 'desc', label: 'Descending (Newest → Oldest)' },
+];
+
+function getDaysUntilEndOfYearUtc() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const endOfYear = new Date(Date.UTC(today.getUTCFullYear(), 11, 31));
+  return Math.max(
+    Math.floor((endOfYear.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+    1
+  );
+}
 
 function isCalendarTypeCompatible(calendarType, isMovie) {
   if (isMovie) {
@@ -54,6 +74,7 @@ export function TraktFilterPanel({
   countries = [],
 }) {
   const filters = localCatalog?.filters || {};
+  const hasExplicitListType = filters.traktListType != null && filters.traktListType !== '';
   const listType = normalizeTraktListType(filters.traktListType);
   const catalogType = localCatalog?.type || 'movie';
   const isMovie = catalogType === 'movie';
@@ -135,11 +156,34 @@ export function TraktFilterPanel({
 
   const activeListType = listTypeOptions.some((option) => option.value === listType)
     ? listType
-    : listTypeOptions[0]?.value || 'trending';
+    : listTypeOptions[0]?.value || 'calendar';
 
   const showPeriod = supportsTraktPeriod(activeListType);
   const showCalendarControls = supportsTraktCalendarSettings(activeListType);
   const showAdvancedFilters = supportsTraktAdvancedFilters(activeListType);
+  const showYearRange = showAdvancedFilters && activeBrowseType === 'discover';
+  const showCoreRatingVoteFilters = supportsTraktCoreRatingVoteFilters(activeListType);
+  const externalRatingSupport = useMemo(
+    () => getTraktExternalRatingFilterSupport(activeListType, catalogType),
+    [activeListType, catalogType]
+  );
+  const showDirectExternalRatingFilters = supportsTraktDirectExternalRatingFilters(
+    activeListType,
+    catalogType
+  );
+  const defaultCalendarSort = activeListType === 'recently_aired' ? 'desc' : 'asc';
+  const activeCalendarSort = filters.traktCalendarSort || defaultCalendarSort;
+  const upcomingDayPresets = useMemo(() => {
+    const daysToYearEnd = getDaysUntilEndOfYearUtc();
+    return [
+      { value: '7', label: 'Next Week Releases' },
+      { value: '30', label: 'Next Month' },
+      { value: String(daysToYearEnd), label: 'This Year' },
+    ];
+  }, []);
+  const calendarDayPresetOptions =
+    activeListType === 'calendar' ? upcomingDayPresets : RECENTLY_AIRED_DAY_PRESETS;
+  const defaultCalendarDays = Number(calendarDayPresetOptions[0]?.value || 30);
   const compatibleCalendarTypes = useMemo(
     () => traktCalendarTypes.filter((item) => isCalendarTypeCompatible(item.value, isMovie)),
     [traktCalendarTypes, isMovie]
@@ -169,17 +213,32 @@ export function TraktFilterPanel({
       ? activeCalendarOptionValue
       : activeListType
     : optionDropdownOptions[0]?.value || activeListType;
+  const selectedBrowseTypeValue = hasExplicitListType ? activeBrowseType : '';
+  const selectedOptionValue = hasExplicitListType ? activeOptionValue : '';
+
+  const clearListTypeSelection = useCallback(() => {
+    onFiltersChange('traktListType', undefined);
+    onFiltersChange('traktCalendarType', undefined);
+    onFiltersChange('traktCalendarDays', undefined);
+    onFiltersChange('traktCalendarStartDate', undefined);
+    onFiltersChange('traktCalendarEndDate', undefined);
+    onFiltersChange('traktCalendarSort', undefined);
+    onFiltersChange('traktPeriod', undefined);
+  }, [onFiltersChange]);
 
   const applyListTypeSelection = useCallback(
     (nextListType) => {
-      onFiltersChange('traktListType', nextListType || 'trending');
+      onFiltersChange('traktListType', nextListType || undefined);
 
-      if (!supportsTraktCalendarSettings(nextListType)) {
+      if (!nextListType || !supportsTraktCalendarSettings(nextListType)) {
         onFiltersChange('traktCalendarType', undefined);
         onFiltersChange('traktCalendarDays', undefined);
+        onFiltersChange('traktCalendarStartDate', undefined);
+        onFiltersChange('traktCalendarEndDate', undefined);
+        onFiltersChange('traktCalendarSort', undefined);
       }
 
-      if (!supportsTraktPeriod(nextListType)) {
+      if (!nextListType || !supportsTraktPeriod(nextListType)) {
         onFiltersChange('traktPeriod', undefined);
       }
     },
@@ -188,6 +247,11 @@ export function TraktFilterPanel({
 
   const handleBrowseTypeChange = useCallback(
     (nextBrowseType) => {
+      if (!nextBrowseType) {
+        clearListTypeSelection();
+        return;
+      }
+
       const defaultListType = getDefaultListTypeForBrowseType({
         browseType: nextBrowseType,
         listTypes: traktListTypes,
@@ -204,6 +268,7 @@ export function TraktFilterPanel({
     },
     [
       applyListTypeSelection,
+      clearListTypeSelection,
       traktListTypes,
       traktCommunityMetrics,
       includeMovieOnlyOptions,
@@ -215,11 +280,19 @@ export function TraktFilterPanel({
 
   const handleOptionChange = useCallback(
     (nextValue) => {
-      if (!nextValue) return;
+      if (!nextValue) {
+        clearListTypeSelection();
+        return;
+      }
 
       if (activeBrowseType === 'calendar') {
         const [nextListType, nextCalendarType] = String(nextValue).split('::');
-        applyListTypeSelection(nextListType || 'calendar');
+        if (!nextListType) {
+          clearListTypeSelection();
+          return;
+        }
+
+        applyListTypeSelection(nextListType);
         onFiltersChange('traktCalendarType', nextCalendarType || fallbackCalendarType);
         onFiltersChange('traktCalendarDays', filters.traktCalendarDays || 30);
         return;
@@ -230,6 +303,7 @@ export function TraktFilterPanel({
     [
       activeBrowseType,
       applyListTypeSelection,
+      clearListTypeSelection,
       onFiltersChange,
       fallbackCalendarType,
       filters.traktCalendarDays,
@@ -280,6 +354,112 @@ export function TraktFilterPanel({
       );
     }
   }, [typedGenreSlugSet, selectedGenres, excludedGenres, onFiltersChange]);
+
+  useEffect(() => {
+    if (!externalRatingSupport.imdbRatings) {
+      if (filters.traktImdbRatingMin != null || filters.traktImdbRatingMax != null) {
+        onFiltersChange('traktImdbRatingMin', undefined);
+        onFiltersChange('traktImdbRatingMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.tmdbRatings) {
+      if (filters.traktTmdbRatingMin != null || filters.traktTmdbRatingMax != null) {
+        onFiltersChange('traktTmdbRatingMin', undefined);
+        onFiltersChange('traktTmdbRatingMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.rtMeters) {
+      if (filters.traktRtMeterMin != null || filters.traktRtMeterMax != null) {
+        onFiltersChange('traktRtMeterMin', undefined);
+        onFiltersChange('traktRtMeterMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.rtUserMeters) {
+      if (filters.traktRtUserMeterMin != null || filters.traktRtUserMeterMax != null) {
+        onFiltersChange('traktRtUserMeterMin', undefined);
+        onFiltersChange('traktRtUserMeterMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.metascores) {
+      if (filters.traktMetascoreMin != null || filters.traktMetascoreMax != null) {
+        onFiltersChange('traktMetascoreMin', undefined);
+        onFiltersChange('traktMetascoreMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.imdbVotes) {
+      if (filters.traktImdbVotesMin != null || filters.traktImdbVotesMax != null) {
+        onFiltersChange('traktImdbVotesMin', undefined);
+        onFiltersChange('traktImdbVotesMax', undefined);
+      }
+    }
+
+    if (!externalRatingSupport.tmdbVotes) {
+      if (filters.traktTmdbVotesMin != null || filters.traktTmdbVotesMax != null) {
+        onFiltersChange('traktTmdbVotesMin', undefined);
+        onFiltersChange('traktTmdbVotesMax', undefined);
+      }
+    }
+  }, [
+    externalRatingSupport.imdbRatings,
+    externalRatingSupport.tmdbRatings,
+    externalRatingSupport.rtMeters,
+    externalRatingSupport.rtUserMeters,
+    externalRatingSupport.metascores,
+    externalRatingSupport.imdbVotes,
+    externalRatingSupport.tmdbVotes,
+    filters.traktImdbRatingMin,
+    filters.traktImdbRatingMax,
+    filters.traktTmdbRatingMin,
+    filters.traktTmdbRatingMax,
+    filters.traktRtMeterMin,
+    filters.traktRtMeterMax,
+    filters.traktRtUserMeterMin,
+    filters.traktRtUserMeterMax,
+    filters.traktMetascoreMin,
+    filters.traktMetascoreMax,
+    filters.traktImdbVotesMin,
+    filters.traktImdbVotesMax,
+    filters.traktTmdbVotesMin,
+    filters.traktTmdbVotesMax,
+    onFiltersChange,
+  ]);
+
+  useEffect(() => {
+    if (filters.traktCalendarStartDate || filters.traktCalendarEndDate) {
+      onFiltersChange('traktCalendarStartDate', undefined);
+      onFiltersChange('traktCalendarEndDate', undefined);
+    }
+  }, [filters.traktCalendarStartDate, filters.traktCalendarEndDate, onFiltersChange]);
+
+  useEffect(() => {
+    if (activeBrowseType === 'discover') return;
+
+    if (filters.traktYearMin != null || filters.traktYearMax != null) {
+      onFiltersChange('traktYearMin', undefined);
+      onFiltersChange('traktYearMax', undefined);
+    }
+  }, [activeBrowseType, filters.traktYearMin, filters.traktYearMax, onFiltersChange]);
+
+  useEffect(() => {
+    if (!showCalendarControls) return;
+
+    const selectedDays = Number(filters.traktCalendarDays || defaultCalendarDays);
+    const allowed = new Set(calendarDayPresetOptions.map((preset) => Number(preset.value)));
+    if (!allowed.has(selectedDays)) {
+      onFiltersChange('traktCalendarDays', defaultCalendarDays);
+    }
+  }, [
+    showCalendarControls,
+    filters.traktCalendarDays,
+    defaultCalendarDays,
+    calendarDayPresetOptions,
+    onFiltersChange,
+  ]);
 
   // ─── Country / Language Adder ────────────────────────────
   const safeLanguages = useMemo(
@@ -455,7 +635,7 @@ export function TraktFilterPanel({
   const getSortFilterBadge = () => {
     let count = 0;
     if (activeBrowseType !== 'discover') count++;
-    if (activeListType !== 'trending') count++;
+    if (activeListType !== 'calendar') count++;
     if (showPeriod && filters.traktPeriod && filters.traktPeriod !== 'weekly') count++;
     if (
       showCalendarControls &&
@@ -463,13 +643,18 @@ export function TraktFilterPanel({
       filters.traktCalendarType !== fallbackCalendarType
     )
       count++;
+    if (
+      showCalendarControls &&
+      filters.traktCalendarSort &&
+      filters.traktCalendarSort !== defaultCalendarSort
+    )
+      count++;
     if (showCalendarControls && filters.traktCalendarDays && filters.traktCalendarDays !== 30)
       count++;
     if (showAdvancedFilters && filters.traktLanguages?.length) count++;
     if (showAdvancedFilters && filters.traktCountries?.length) count++;
-    if (showAdvancedFilters && (filters.traktYearMin != null || filters.traktYearMax != null))
-      count++;
-    if (showAdvancedFilters && (filters.traktRatingMin || filters.traktRatingMax)) count++;
+    if (showYearRange && (filters.traktYearMin != null || filters.traktYearMax != null)) count++;
+    if (showCoreRatingVoteFilters && (filters.traktRatingMin || filters.traktRatingMax)) count++;
     if (showAdvancedFilters && (filters.traktRuntimeMin != null || filters.traktRuntimeMax != null))
       count++;
     return count;
@@ -488,14 +673,31 @@ export function TraktFilterPanel({
 
   const getRatingsBadge = () => {
     let count = 0;
-    if (filters.traktImdbRatingMin || filters.traktImdbRatingMax) count++;
-    if (filters.traktTmdbRatingMin || filters.traktTmdbRatingMax) count++;
-    if (filters.traktRtMeterMin || filters.traktRtMeterMax) count++;
-    if (filters.traktRtUserMeterMin || filters.traktRtUserMeterMax) count++;
-    if (filters.traktMetascoreMin || filters.traktMetascoreMax) count++;
+    if (
+      externalRatingSupport.imdbRatings &&
+      (filters.traktImdbRatingMin || filters.traktImdbRatingMax)
+    )
+      count++;
+    if (
+      externalRatingSupport.tmdbRatings &&
+      (filters.traktTmdbRatingMin || filters.traktTmdbRatingMax)
+    )
+      count++;
+    if (externalRatingSupport.rtMeters && (filters.traktRtMeterMin || filters.traktRtMeterMax))
+      count++;
+    if (
+      externalRatingSupport.rtUserMeters &&
+      (filters.traktRtUserMeterMin || filters.traktRtUserMeterMax)
+    )
+      count++;
+    if (
+      externalRatingSupport.metascores &&
+      (filters.traktMetascoreMin || filters.traktMetascoreMax)
+    )
+      count++;
     if (filters.traktVotesMin) count++;
-    if (filters.traktImdbVotesMin) count++;
-    if (filters.traktTmdbVotesMin) count++;
+    if (externalRatingSupport.imdbVotes && filters.traktImdbVotesMin) count++;
+    if (externalRatingSupport.tmdbVotes && filters.traktTmdbVotesMin) count++;
     return count;
   };
 
@@ -636,49 +838,6 @@ export function TraktFilterPanel({
               : 'repeat(2, minmax(0, 1fr))',
           }}
         >
-          <div className="filter-group">
-            <LabelWithTooltip
-              label="Browse Type"
-              tooltip="Pick a broader Trakt catalog family such as Discover, Community, Calendar, or Other."
-            />
-            <SearchableSelect
-              options={browseTypeOptions}
-              value={activeBrowseType}
-              onChange={(value) => handleBrowseTypeChange(value || 'discover')}
-              placeholder="Select browse type..."
-              searchPlaceholder="Search browse types..."
-              labelKey="label"
-              valueKey="value"
-              allowClear={false}
-            />
-          </div>
-
-          <div className="filter-group">
-            <LabelWithTooltip
-              label="Option"
-              tooltip={
-                activeBrowseType === 'calendar'
-                  ? 'Calendar options combine timeframe (upcoming/recently aired) and feed type.'
-                  : 'Select the specific list option within the chosen browse type.'
-              }
-            />
-            <SearchableSelect
-              options={optionDropdownOptions}
-              value={activeOptionValue}
-              onChange={(value) => handleOptionChange(value || activeOptionValue)}
-              placeholder="Select option..."
-              searchPlaceholder="Search options..."
-              labelKey="label"
-              valueKey="value"
-              allowClear={false}
-            />
-            {activeBrowseType === 'calendar' && (
-              <span className="filter-label-hint" style={{ marginTop: '4px' }}>
-                Example: Upcoming • Movie Releases, or Recently Aired • Season Premieres.
-              </span>
-            )}
-          </div>
-
           {showAdvancedFilters && (
             <div className="filter-group">
               <LabelWithTooltip label="Original Language" tooltip="Filter by original language." />
@@ -740,6 +899,49 @@ export function TraktFilterPanel({
               )}
             </div>
           )}
+
+          <div className="filter-group">
+            <LabelWithTooltip
+              label="Browse Type"
+              tooltip="Pick a broader Trakt catalog family such as Discover, Community, Calendar, or Other."
+            />
+            <SearchableSelect
+              options={browseTypeOptions}
+              value={selectedBrowseTypeValue}
+              onChange={handleBrowseTypeChange}
+              placeholder="Optional (Trakt default)..."
+              searchPlaceholder="Search browse types..."
+              labelKey="label"
+              valueKey="value"
+              allowClear={true}
+            />
+          </div>
+
+          <div className="filter-group">
+            <LabelWithTooltip
+              label="Option"
+              tooltip={
+                activeBrowseType === 'calendar'
+                  ? 'Calendar options combine timeframe (upcoming/recently aired) and feed type.'
+                  : 'Select the specific list option within the chosen browse type.'
+              }
+            />
+            <SearchableSelect
+              options={optionDropdownOptions}
+              value={selectedOptionValue}
+              onChange={handleOptionChange}
+              placeholder="Optional (Trakt default)..."
+              searchPlaceholder="Search options..."
+              labelKey="label"
+              valueKey="value"
+              allowClear={true}
+            />
+            {activeBrowseType === 'calendar' && (
+              <span className="filter-label-hint" style={{ marginTop: '4px' }}>
+                Example: Upcoming • Movie Releases, or Recently Aired • Season Premieres.
+              </span>
+            )}
+          </div>
         </div>
 
         {showPeriod && traktPeriods.length > 0 && (
@@ -759,25 +961,57 @@ export function TraktFilterPanel({
         {showCalendarControls && (
           <div className="filter-group">
             <LabelWithTooltip
+              label="Date Order"
+              tooltip="Sort items in the selected time range by date in ascending or descending order."
+            />
+            <SearchableSelect
+              options={CALENDAR_SORT_OPTIONS}
+              value={activeCalendarSort}
+              onChange={(value) => {
+                const nextSort = value || defaultCalendarSort;
+                onFiltersChange(
+                  'traktCalendarSort',
+                  nextSort === defaultCalendarSort ? undefined : nextSort
+                );
+              }}
+              placeholder="Select date order..."
+              searchPlaceholder="Search sort options..."
+              labelKey="label"
+              valueKey="value"
+              allowClear={false}
+            />
+
+            <LabelWithTooltip
               label="Window"
               tooltip={
-                activeListType === 'recently_aired'
-                  ? 'How far back to look for recently aired content. Pick a month preset.'
-                  : 'How far ahead to look for upcoming releases. Pick a month preset.'
+                activeListType === 'calendar'
+                  ? 'Pick a future preset for upcoming releases (next week, next month, this year).'
+                  : 'Pick a past preset ending today for recently aired titles.'
               }
             />
             <AnimeFormatSelector
-              selected={[String(filters.traktCalendarDays || 30)]}
-              options={CALENDAR_DAY_PRESETS}
+              selected={[String(filters.traktCalendarDays || defaultCalendarDays)]}
+              options={calendarDayPresetOptions}
               onChange={(vals) => {
-                const nextWindow = parseInt(vals[vals.length - 1] || '30', 10);
+                const nextWindow = parseInt(
+                  vals[vals.length - 1] || String(defaultCalendarDays),
+                  10
+                );
                 onFiltersChange('traktCalendarDays', nextWindow);
+                onFiltersChange('traktCalendarStartDate', undefined);
+                onFiltersChange('traktCalendarEndDate', undefined);
               }}
             />
+
+            <span className="filter-label-hint" style={{ marginTop: '6px' }}>
+              {activeListType === 'calendar'
+                ? 'Future range: start date = today, end date = today plus selected preset.'
+                : 'Recent range: end date = today, start date = today minus selected preset.'}
+            </span>
           </div>
         )}
 
-        {showAdvancedFilters && (
+        {showYearRange && (
           <RangeSlider
             label="Year Range"
             min={1900}
@@ -791,7 +1025,7 @@ export function TraktFilterPanel({
           />
         )}
 
-        {showAdvancedFilters && (
+        {showCoreRatingVoteFilters && (
           <RangeSlider
             label="Trakt Rating"
             min={0}
@@ -909,7 +1143,7 @@ export function TraktFilterPanel({
       )}
 
       {/* ── Section 2: Ratings (cross-platform) ── */}
-      {showAdvancedFilters && (
+      {(showAdvancedFilters || showCoreRatingVoteFilters) && (
         <FilterSection
           id="ratings"
           title="Ratings & Votes"
@@ -919,65 +1153,75 @@ export function TraktFilterPanel({
           onToggle={onToggleSection}
           badgeCount={getRatingsBadge()}
         >
-          <RangeSlider
-            label="IMDb Rating"
-            min={0}
-            max={10}
-            step={0.1}
-            value={[filters.traktImdbRatingMin || 0, filters.traktImdbRatingMax || 10]}
-            onChange={([min, max]) => {
-              onFiltersChange('traktImdbRatingMin', min > 0 ? min : undefined);
-              onFiltersChange('traktImdbRatingMax', max < 10 ? max : undefined);
-            }}
-          />
+          {externalRatingSupport.imdbRatings && (
+            <RangeSlider
+              label="IMDb Rating"
+              min={0}
+              max={10}
+              step={0.1}
+              value={[filters.traktImdbRatingMin || 0, filters.traktImdbRatingMax || 10]}
+              onChange={([min, max]) => {
+                onFiltersChange('traktImdbRatingMin', min > 0 ? min : undefined);
+                onFiltersChange('traktImdbRatingMax', max < 10 ? max : undefined);
+              }}
+            />
+          )}
 
-          <RangeSlider
-            label="TMDB Rating"
-            min={0}
-            max={10}
-            step={0.1}
-            value={[filters.traktTmdbRatingMin || 0, filters.traktTmdbRatingMax || 10]}
-            onChange={([min, max]) => {
-              onFiltersChange('traktTmdbRatingMin', min > 0 ? min : undefined);
-              onFiltersChange('traktTmdbRatingMax', max < 10 ? max : undefined);
-            }}
-          />
+          {externalRatingSupport.tmdbRatings && (
+            <RangeSlider
+              label="TMDB Rating"
+              min={0}
+              max={10}
+              step={0.1}
+              value={[filters.traktTmdbRatingMin || 0, filters.traktTmdbRatingMax || 10]}
+              onChange={([min, max]) => {
+                onFiltersChange('traktTmdbRatingMin', min > 0 ? min : undefined);
+                onFiltersChange('traktTmdbRatingMax', max < 10 ? max : undefined);
+              }}
+            />
+          )}
 
-          <RangeSlider
-            label="Rotten Tomatoes (Critics)"
-            min={0}
-            max={100}
-            step={1}
-            value={[filters.traktRtMeterMin || 0, filters.traktRtMeterMax || 100]}
-            onChange={([min, max]) => {
-              onFiltersChange('traktRtMeterMin', min > 0 ? min : undefined);
-              onFiltersChange('traktRtMeterMax', max < 100 ? max : undefined);
-            }}
-          />
+          {externalRatingSupport.rtMeters && (
+            <RangeSlider
+              label="Rotten Tomatoes (Critics)"
+              min={0}
+              max={100}
+              step={1}
+              value={[filters.traktRtMeterMin || 0, filters.traktRtMeterMax || 100]}
+              onChange={([min, max]) => {
+                onFiltersChange('traktRtMeterMin', min > 0 ? min : undefined);
+                onFiltersChange('traktRtMeterMax', max < 100 ? max : undefined);
+              }}
+            />
+          )}
 
-          <RangeSlider
-            label="Rotten Tomatoes (Audience)"
-            min={0}
-            max={100}
-            step={1}
-            value={[filters.traktRtUserMeterMin || 0, filters.traktRtUserMeterMax || 100]}
-            onChange={([min, max]) => {
-              onFiltersChange('traktRtUserMeterMin', min > 0 ? min : undefined);
-              onFiltersChange('traktRtUserMeterMax', max < 100 ? max : undefined);
-            }}
-          />
+          {externalRatingSupport.rtUserMeters && (
+            <RangeSlider
+              label="Rotten Tomatoes (Audience)"
+              min={0}
+              max={100}
+              step={1}
+              value={[filters.traktRtUserMeterMin || 0, filters.traktRtUserMeterMax || 100]}
+              onChange={([min, max]) => {
+                onFiltersChange('traktRtUserMeterMin', min > 0 ? min : undefined);
+                onFiltersChange('traktRtUserMeterMax', max < 100 ? max : undefined);
+              }}
+            />
+          )}
 
-          <RangeSlider
-            label="Metacritic"
-            min={0}
-            max={100}
-            step={1}
-            value={[filters.traktMetascoreMin || 0, filters.traktMetascoreMax || 100]}
-            onChange={([min, max]) => {
-              onFiltersChange('traktMetascoreMin', min > 0 ? min : undefined);
-              onFiltersChange('traktMetascoreMax', max < 100 ? max : undefined);
-            }}
-          />
+          {externalRatingSupport.metascores && (
+            <RangeSlider
+              label="Metacritic"
+              min={0}
+              max={100}
+              step={1}
+              value={[filters.traktMetascoreMin || 0, filters.traktMetascoreMax || 100]}
+              onChange={([min, max]) => {
+                onFiltersChange('traktMetascoreMin', min > 0 ? min : undefined);
+                onFiltersChange('traktMetascoreMax', max < 100 ? max : undefined);
+              }}
+            />
+          )}
 
           <div className="filter-grid">
             <div className="filter-group">
@@ -996,53 +1240,52 @@ export function TraktFilterPanel({
               />
             </div>
 
-            {!showCalendarControls && (
-              <>
-                <div className="filter-group">
-                  <LabelWithTooltip
-                    label="IMDb Min Votes"
-                    tooltip="Minimum number of IMDb votes."
-                  />
-                  <input
-                    type="number"
-                    className="input"
-                    style={{ height: '38px' }}
-                    placeholder="0"
-                    min={0}
-                    value={filters.traktImdbVotesMin || ''}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      onFiltersChange('traktImdbVotesMin', val > 0 ? val : undefined);
-                    }}
-                  />
-                </div>
+            {externalRatingSupport.imdbVotes && (
+              <div className="filter-group">
+                <LabelWithTooltip label="IMDb Min Votes" tooltip="Minimum number of IMDb votes." />
+                <input
+                  type="number"
+                  className="input"
+                  style={{ height: '38px' }}
+                  placeholder="0"
+                  min={0}
+                  value={filters.traktImdbVotesMin || ''}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    onFiltersChange('traktImdbVotesMin', val > 0 ? val : undefined);
+                  }}
+                />
+              </div>
+            )}
 
-                <div className="filter-group">
-                  <LabelWithTooltip
-                    label="TMDB Min Votes"
-                    tooltip="Minimum number of TMDB votes."
-                  />
-                  <input
-                    type="number"
-                    className="input"
-                    style={{ height: '38px' }}
-                    placeholder="0"
-                    min={0}
-                    value={filters.traktTmdbVotesMin || ''}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      onFiltersChange('traktTmdbVotesMin', val > 0 ? val : undefined);
-                    }}
-                  />
-                </div>
-              </>
+            {externalRatingSupport.tmdbVotes && (
+              <div className="filter-group">
+                <LabelWithTooltip label="TMDB Min Votes" tooltip="Minimum number of TMDB votes." />
+                <input
+                  type="number"
+                  className="input"
+                  style={{ height: '38px' }}
+                  placeholder="0"
+                  min={0}
+                  value={filters.traktTmdbVotesMin || ''}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    onFiltersChange('traktTmdbVotesMin', val > 0 ? val : undefined);
+                  }}
+                />
+              </div>
             )}
           </div>
 
-          {showCalendarControls && (
+          {!showDirectExternalRatingFilters && (
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
-              Calendar feeds support Trakt vote filtering only; IMDb/TMDB vote filters are
-              unavailable here.
+              This feed only supports Trakt Rating and Trakt Vote filters.
+            </p>
+          )}
+
+          {showDirectExternalRatingFilters && !isMovie && (
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+              Only filters supported by the selected feed and media type are shown.
             </p>
           )}
         </FilterSection>

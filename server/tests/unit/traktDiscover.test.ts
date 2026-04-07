@@ -49,7 +49,35 @@ beforeEach(() => {
 describe('trakt discover routing', () => {
   it('normalizes legacy community_stats list type', () => {
     expect(normalizeTraktListType('community_stats')).toBe('watched');
-    expect(normalizeTraktListType(undefined)).toBe('trending');
+    expect(normalizeTraktListType(undefined)).toBe('calendar');
+  });
+
+  it('falls back to calendar when list type is omitted', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        released: '2025-01-01',
+        movie: {
+          title: 'Default Calendar',
+          ids: { trakt: 999, slug: 'default-calendar' },
+        },
+      },
+    ]);
+
+    const result = await discover(
+      {
+        traktGenres: ['action'],
+      },
+      'movie',
+      1,
+      'client-id'
+    );
+
+    expect(mockedTraktFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/calendars/all/movies/'),
+      'client-id'
+    );
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.title).toBe('Default Calendar');
   });
 
   it('applies endpoint filters to trending lists', async () => {
@@ -84,6 +112,49 @@ describe('trakt discover routing', () => {
     );
     expect(mockedTraktFetch).toHaveBeenCalledWith(
       expect.stringContaining('ratings=80-100'),
+      'client-id'
+    );
+  });
+
+  it('serializes year/runtime/country/language filters for trending discover', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        watchers: 10,
+        movie: {
+          title: 'Filtered Trending',
+          ids: { trakt: 11, slug: 'filtered-trending' },
+        },
+      },
+    ]);
+
+    await discover(
+      {
+        traktYearMin: 2000,
+        traktYearMax: 2025,
+        traktRuntimeMin: 30,
+        traktRuntimeMax: 120,
+        traktCountries: ['IN'],
+        traktLanguages: ['hi'],
+      },
+      'movie',
+      1,
+      'client-id'
+    );
+
+    expect(mockedTraktFetch).toHaveBeenCalledWith(
+      expect.stringContaining('years=2000-2025'),
+      'client-id'
+    );
+    expect(mockedTraktFetch).toHaveBeenCalledWith(
+      expect.stringContaining('runtimes=30-120'),
+      'client-id'
+    );
+    expect(mockedTraktFetch).toHaveBeenCalledWith(
+      expect.stringContaining('countries=IN'),
+      'client-id'
+    );
+    expect(mockedTraktFetch).toHaveBeenCalledWith(
+      expect.stringContaining('languages=hi'),
       'client-id'
     );
   });
@@ -227,6 +298,173 @@ describe('trakt discover routing', () => {
     expect(String(mockedTraktFetch.mock.calls[0][0])).toContain('/calendars/all/movies/');
   });
 
+  it('derives future-looking dynamic preset range from today for calendar windows', async () => {
+    mockedTraktFetch.mockResolvedValue(responseForListType('calendar'));
+
+    await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 30,
+      },
+      'movie',
+      1,
+      'client-id-dynamic-preset'
+    );
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const expectedStartString = today.toISOString().split('T')[0];
+
+    const firstUrl = String(mockedTraktFetch.mock.calls[0][0]);
+    expect(firstUrl).toContain(`/calendars/all/movies/${expectedStartString}/30`);
+  });
+
+  it('derives full multi-year dynamic preset range from today for recently aired windows', async () => {
+    mockedTraktFetch.mockResolvedValue(responseForListType('recently_aired'));
+
+    await discover(
+      {
+        traktListType: 'recently_aired',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 1095,
+      },
+      'movie',
+      1,
+      'client-id-dynamic-multi-year-preset'
+    );
+
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const expectedStart = new Date(today);
+    expectedStart.setUTCDate(today.getUTCDate() - 1094);
+    const expectedStartString = expectedStart.toISOString().split('T')[0];
+
+    const firstUrl = String(mockedTraktFetch.mock.calls[0][0]);
+    expect(firstUrl).toContain(`/calendars/all/movies/${expectedStartString}/31`);
+  });
+
+  it('chunks explicit calendar date ranges into <=31 day windows', async () => {
+    mockedTraktFetch.mockResolvedValue(responseForListType('calendar'));
+
+    await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarStartDate: '2024-01-01',
+        traktCalendarEndDate: '2024-02-15',
+      },
+      'movie',
+      1,
+      'client-id-range'
+    );
+
+    const calls = mockedTraktFetch.mock.calls.map((call) => String(call[0]));
+    expect(calls.length).toBeGreaterThan(1);
+    expect(calls[0]).toContain('/calendars/all/movies/2024-01-01/31');
+    expect(calls[1]).toContain('/calendars/all/movies/2024-02-01/15');
+  });
+
+  it('supports descending date order for upcoming calendar range', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        released: '2024-01-01',
+        movie: {
+          title: 'Older Upcoming',
+          ids: { trakt: 301, slug: 'older-upcoming' },
+        },
+      },
+      {
+        released: '2024-01-03',
+        movie: {
+          title: 'Newer Upcoming',
+          ids: { trakt: 302, slug: 'newer-upcoming' },
+        },
+      },
+    ]);
+
+    const result = await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 7,
+        traktCalendarSort: 'desc',
+      },
+      'movie',
+      1,
+      'client-id-calendar-desc'
+    );
+
+    expect(result.items[0]?.title).toBe('Newer Upcoming');
+    expect(result.items[1]?.title).toBe('Older Upcoming');
+  });
+
+  it('supports ascending date order for recently aired range', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        released: '2024-01-01',
+        movie: {
+          title: 'Older Aired',
+          ids: { trakt: 311, slug: 'older-aired' },
+        },
+      },
+      {
+        released: '2024-01-03',
+        movie: {
+          title: 'Newer Aired',
+          ids: { trakt: 312, slug: 'newer-aired' },
+        },
+      },
+    ]);
+
+    const result = await discover(
+      {
+        traktListType: 'recently_aired',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 7,
+        traktCalendarSort: 'asc',
+      },
+      'movie',
+      1,
+      'client-id-recent-asc'
+    );
+
+    expect(result.items[0]?.title).toBe('Older Aired');
+    expect(result.items[1]?.title).toBe('Newer Aired');
+  });
+
+  it('uses latest entries first for long explicit range with descending sort', async () => {
+    mockedTraktFetch.mockImplementation(async (url) => {
+      const start =
+        String(url).match(/\/calendars\/all\/movies\/(\d{4}-\d{2}-\d{2})\//)?.[1] ?? '2000-01-01';
+      return [
+        {
+          released: start,
+          movie: {
+            title: `Item ${start}`,
+            ids: { trakt: Number(start.replace(/-/g, '')), slug: `item-${start}` },
+          },
+        },
+      ];
+    });
+
+    const result = await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarStartDate: '2020-01-01',
+        traktCalendarEndDate: '2026-04-07',
+        traktCalendarSort: 'desc',
+      },
+      'movie',
+      1,
+      'client-id-long-range-desc'
+    );
+
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items[0]?.title).toContain('2026');
+  });
+
   it('applies Trakt Min Votes post-filter on calendar results', async () => {
     mockedTraktFetch.mockResolvedValue([
       {
@@ -256,7 +494,7 @@ describe('trakt discover routing', () => {
       },
       'movie',
       1,
-      'client-id'
+      'client-id-calendar-filter-check'
     );
 
     expect(result.items).toHaveLength(1);
@@ -292,10 +530,122 @@ describe('trakt discover routing', () => {
       },
       'movie',
       1,
-      'client-id'
+      'client-id-calendar-external-strip'
     );
 
     expect(result.items).toHaveLength(1);
     expect(result.items[0]?.title).toBe('Rated 8.2');
+  });
+
+  it('sends only supported external rating/vote filters to movie calendar endpoints', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        released: '2024-01-01',
+        movie: {
+          title: 'Calendar Item',
+          ids: { trakt: 91, slug: 'calendar-item' },
+        },
+      },
+    ]);
+
+    await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 7,
+        traktImdbRatingMin: 8,
+        traktTmdbRatingMin: 7,
+        traktRtMeterMin: 80,
+        traktRtUserMeterMin: 80,
+        traktMetascoreMin: 80,
+        traktImdbVotesMin: 1000,
+        traktTmdbVotesMin: 1000,
+      },
+      'movie',
+      1,
+      'client-id-calendar-external-strip-check'
+    );
+
+    const firstUrl = String(mockedTraktFetch.mock.calls[0][0]);
+    expect(firstUrl).toContain('imdb_ratings=8-10');
+    expect(firstUrl).toContain('tmdb_ratings=7-10');
+    expect(firstUrl).toContain('rt_meters=80-100');
+    expect(firstUrl).toContain('rt_user_meters=80-100');
+    expect(firstUrl).toContain('imdb_votes=1000-');
+    expect(firstUrl).toContain('tmdb_votes=1000-');
+    expect(firstUrl).not.toContain('metascores=');
+  });
+
+  it('sends only supported external rating/vote filters to series calendar endpoints', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        first_aired: '2024-01-01T00:00:00.000Z',
+        show: {
+          title: 'Calendar Series Item',
+          ids: { trakt: 901, slug: 'calendar-series-item' },
+        },
+      },
+    ]);
+
+    await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'shows',
+        traktCalendarDays: 7,
+        traktImdbRatingMin: 8,
+        traktTmdbRatingMin: 7,
+        traktRtMeterMin: 80,
+        traktRtUserMeterMin: 80,
+        traktMetascoreMin: 80,
+        traktImdbVotesMin: 1000,
+        traktTmdbVotesMin: 1000,
+      },
+      'series',
+      1,
+      'client-id-calendar-series-filter-support'
+    );
+
+    const firstUrl = String(mockedTraktFetch.mock.calls[0][0]);
+    expect(firstUrl).not.toContain('imdb_ratings=');
+    expect(firstUrl).toContain('tmdb_ratings=7-10');
+    expect(firstUrl).not.toContain('rt_meters=');
+    expect(firstUrl).not.toContain('rt_user_meters=');
+    expect(firstUrl).not.toContain('metascores=');
+    expect(firstUrl).not.toContain('imdb_votes=');
+    expect(firstUrl).toContain('tmdb_votes=1000-');
+  });
+
+  it('applies Trakt Min Votes post-filter on trending as fallback safety net', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        watchers: 1,
+        movie: {
+          title: 'Trending Low Votes',
+          votes: 10,
+          ids: { trakt: 101, slug: 'trending-low-votes' },
+        },
+      },
+      {
+        watchers: 1,
+        movie: {
+          title: 'Trending High Votes',
+          votes: 2000,
+          ids: { trakt: 102, slug: 'trending-high-votes' },
+        },
+      },
+    ]);
+
+    const result = await discover(
+      {
+        traktListType: 'trending',
+        traktVotesMin: 100,
+      },
+      'movie',
+      1,
+      'client-id'
+    );
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.title).toBe('Trending High Votes');
   });
 });

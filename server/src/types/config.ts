@@ -172,6 +172,9 @@ export interface TraktCatalogFilters extends BaseCatalogFilters {
   traktPeriod?: string;
   traktCalendarType?: string;
   traktCalendarDays?: number;
+  traktCalendarStartDate?: string;
+  traktCalendarEndDate?: string;
+  traktCalendarSort?: 'asc' | 'desc';
   traktListId?: string;
   traktGenres?: string[];
   traktExcludeGenres?: string[];

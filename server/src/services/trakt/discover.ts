@@ -23,8 +23,10 @@ import type { ContentType } from '../../types/common.ts';
 const log = createLogger('trakt:discover');
 const PAGE_LIMIT = 20;
 const MAX_CALENDAR_CHUNK = 31;
-const MAX_CALENDAR_RANGE_DAYS = 365;
-const MAX_RECENTLY_AIRED_DAYS = 365;
+const MAX_CALENDAR_RANGE_DAYS = 3650;
+const MAX_RECENTLY_AIRED_DAYS = 3650;
+const MAX_CALENDAR_EXPLICIT_RANGE_DAYS = 3650;
+const DEFAULT_CALENDAR_WINDOW_DAYS = 30;
 const CALENDAR_CACHE_TTL_MS = 5 * 60 * 1000;
 const calendarCache = new Map<string, { items: (TraktMovie | TraktShow)[]; ts: number }>();
 const FILTERABLE_LIST_TYPES = new Set([
@@ -39,15 +41,133 @@ const FILTERABLE_LIST_TYPES = new Set([
   'calendar',
   'recently_aired',
 ]);
+const DIRECT_EXTERNAL_RATING_FILTER_LIST_TYPES = new Set([
+  'trending',
+  'popular',
+  'favorited',
+  'watched',
+  'played',
+  'collected',
+  'anticipated',
+  'recommended',
+]);
+
+type ExternalRatingSupport = {
+  imdbRatings: boolean;
+  tmdbRatings: boolean;
+  rtMeters: boolean;
+  rtUserMeters: boolean;
+  metascores: boolean;
+  imdbVotes: boolean;
+  tmdbVotes: boolean;
+};
+
+const EMPTY_EXTERNAL_RATING_SUPPORT: ExternalRatingSupport = {
+  imdbRatings: false,
+  tmdbRatings: false,
+  rtMeters: false,
+  rtUserMeters: false,
+  metascores: false,
+  imdbVotes: false,
+  tmdbVotes: false,
+};
+
+const MOVIE_EXTERNAL_RATING_SUPPORT: ExternalRatingSupport = {
+  imdbRatings: true,
+  tmdbRatings: true,
+  rtMeters: true,
+  rtUserMeters: true,
+  metascores: true,
+  imdbVotes: true,
+  tmdbVotes: true,
+};
+
+const SERIES_EXTERNAL_RATING_SUPPORT: ExternalRatingSupport = {
+  imdbRatings: true,
+  tmdbRatings: true,
+  rtMeters: false,
+  rtUserMeters: false,
+  metascores: false,
+  imdbVotes: true,
+  tmdbVotes: true,
+};
+
+const CALENDAR_MOVIE_EXTERNAL_RATING_SUPPORT: ExternalRatingSupport = {
+  imdbRatings: true,
+  tmdbRatings: true,
+  rtMeters: true,
+  rtUserMeters: true,
+  metascores: false,
+  imdbVotes: true,
+  tmdbVotes: true,
+};
+
+const CALENDAR_SERIES_EXTERNAL_RATING_SUPPORT: ExternalRatingSupport = {
+  imdbRatings: false,
+  tmdbRatings: true,
+  rtMeters: false,
+  rtUserMeters: false,
+  metascores: false,
+  imdbVotes: false,
+  tmdbVotes: true,
+};
 
 export function normalizeTraktListType(listType?: string): string {
-  if (!listType) return 'trending';
+  if (!listType) return 'calendar';
   if (listType === 'community_stats') return 'watched';
   return listType;
 }
 
 function shouldApplyFilters(listType: string): boolean {
   return FILTERABLE_LIST_TYPES.has(listType);
+}
+
+function supportsDirectExternalRatingFilters(listType: string): boolean {
+  return DIRECT_EXTERNAL_RATING_FILTER_LIST_TYPES.has(listType);
+}
+
+function getExternalRatingSupport(listType: string, type: ContentType): ExternalRatingSupport {
+  const isMovie = type === 'movie';
+
+  if (listType === 'calendar' || listType === 'recently_aired') {
+    return isMovie
+      ? CALENDAR_MOVIE_EXTERNAL_RATING_SUPPORT
+      : CALENDAR_SERIES_EXTERNAL_RATING_SUPPORT;
+  }
+
+  if (supportsDirectExternalRatingFilters(listType)) {
+    return isMovie ? MOVIE_EXTERNAL_RATING_SUPPORT : SERIES_EXTERNAL_RATING_SUPPORT;
+  }
+
+  return EMPTY_EXTERNAL_RATING_SUPPORT;
+}
+
+function stripUnreliableRatingFilters(
+  listType: string,
+  type: ContentType,
+  filters?: TraktCatalogFilters
+): TraktCatalogFilters | undefined {
+  if (!filters) return filters;
+
+  const support = getExternalRatingSupport(listType, type);
+
+  return {
+    ...filters,
+    traktImdbRatingMin: support.imdbRatings ? filters.traktImdbRatingMin : undefined,
+    traktImdbRatingMax: support.imdbRatings ? filters.traktImdbRatingMax : undefined,
+    traktTmdbRatingMin: support.tmdbRatings ? filters.traktTmdbRatingMin : undefined,
+    traktTmdbRatingMax: support.tmdbRatings ? filters.traktTmdbRatingMax : undefined,
+    traktRtMeterMin: support.rtMeters ? filters.traktRtMeterMin : undefined,
+    traktRtMeterMax: support.rtMeters ? filters.traktRtMeterMax : undefined,
+    traktRtUserMeterMin: support.rtUserMeters ? filters.traktRtUserMeterMin : undefined,
+    traktRtUserMeterMax: support.rtUserMeters ? filters.traktRtUserMeterMax : undefined,
+    traktMetascoreMin: support.metascores ? filters.traktMetascoreMin : undefined,
+    traktMetascoreMax: support.metascores ? filters.traktMetascoreMax : undefined,
+    traktImdbVotesMin: support.imdbVotes ? filters.traktImdbVotesMin : undefined,
+    traktImdbVotesMax: support.imdbVotes ? filters.traktImdbVotesMax : undefined,
+    traktTmdbVotesMin: support.tmdbVotes ? filters.traktTmdbVotesMin : undefined,
+    traktTmdbVotesMax: support.tmdbVotes ? filters.traktTmdbVotesMax : undefined,
+  };
 }
 
 function traktContentType(type: ContentType): string {
@@ -93,6 +213,135 @@ function isMovieCalendarType(calendarType: string, type: ContentType): boolean {
       calendarType !== 'shows_finales' &&
       type === 'movie')
   );
+}
+
+function parseCalendarDate(value?: string): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  parsed.setUTCHours(0, 0, 0, 0);
+  return parsed;
+}
+
+function startOfTodayUtc(): Date {
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  return now;
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  next.setUTCHours(0, 0, 0, 0);
+  return next;
+}
+
+function formatCalendarDate(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+function inclusiveDaySpan(startDate: Date, endDate: Date): number {
+  return Math.floor((endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+}
+
+function buildCalendarChunks(
+  startDate: Date,
+  endDate: Date
+): Array<{ startDate: string; chunkDays: number }> {
+  const chunks: Array<{ startDate: string; chunkDays: number }> = [];
+  let currentStart = new Date(startDate);
+
+  while (currentStart <= endDate) {
+    const daysRemaining = inclusiveDaySpan(currentStart, endDate);
+    const chunkDays = Math.min(daysRemaining, MAX_CALENDAR_CHUNK);
+    chunks.push({
+      startDate: formatCalendarDate(currentStart),
+      chunkDays,
+    });
+    currentStart = addUtcDays(currentStart, chunkDays);
+  }
+
+  return chunks;
+}
+
+type CalendarDateRange = {
+  startDate: Date;
+  endDate: Date;
+  signature: string;
+};
+
+type CalendarSortDirection = 'asc' | 'desc';
+
+function normalizeCalendarSort(
+  sort: TraktCatalogFilters['traktCalendarSort'],
+  fallback: CalendarSortDirection
+): CalendarSortDirection {
+  if (sort === 'asc' || sort === 'desc') return sort;
+  return fallback;
+}
+
+function resolveCalendarDateRange(
+  filters: TraktCatalogFilters,
+  listType: 'calendar' | 'recently_aired',
+  maxRangeDays: number
+): CalendarDateRange {
+  const defaultDays = Math.min(
+    Math.max(filters.traktCalendarDays || DEFAULT_CALENDAR_WINDOW_DAYS, 1),
+    maxRangeDays
+  );
+
+  const today = startOfTodayUtc();
+  const inputStart = parseCalendarDate(filters.traktCalendarStartDate);
+  const inputEnd = parseCalendarDate(filters.traktCalendarEndDate);
+  const hasExplicitRange = Boolean(inputStart || inputEnd);
+  const defaultSort = listType === 'recently_aired' ? 'desc' : 'asc';
+  const calendarSort = normalizeCalendarSort(filters.traktCalendarSort, defaultSort);
+
+  let startDate: Date;
+  let endDate: Date;
+
+  if (inputStart || inputEnd) {
+    if (inputStart && inputEnd) {
+      startDate = inputStart;
+      endDate = inputEnd;
+    } else if (inputStart) {
+      startDate = inputStart;
+      endDate = listType === 'calendar' ? addUtcDays(inputStart, defaultDays - 1) : today;
+    } else {
+      endDate = inputEnd!;
+      startDate = addUtcDays(inputEnd!, -(defaultDays - 1));
+    }
+  } else {
+    if (listType === 'calendar') {
+      startDate = today;
+      endDate = addUtcDays(today, defaultDays - 1);
+    } else {
+      endDate = today;
+      startDate = addUtcDays(today, -(defaultDays - 1));
+    }
+  }
+
+  if (endDate < startDate) {
+    const tmp = startDate;
+    startDate = endDate;
+    endDate = tmp;
+  }
+
+  const maxDays = hasExplicitRange ? MAX_CALENDAR_EXPLICIT_RANGE_DAYS : maxRangeDays;
+  const span = inclusiveDaySpan(startDate, endDate);
+  if (span > maxDays) {
+    if (calendarSort === 'desc') {
+      startDate = addUtcDays(endDate, -(maxDays - 1));
+    } else {
+      endDate = addUtcDays(startDate, maxDays - 1);
+    }
+  }
+
+  return {
+    startDate,
+    endDate,
+    signature: `${formatCalendarDate(startDate)}:${formatCalendarDate(endDate)}`,
+  };
 }
 
 function buildFilterParams(filters: TraktCatalogFilters): string {
@@ -193,7 +442,7 @@ function unwrapShows(items: TraktTrendingShow[]): TraktShow[] {
   return items.map((i) => i.show);
 }
 
-function applyCalendarPostFilters(
+function applyCorePostFilters(
   items: (TraktMovie | TraktShow)[],
   filters?: TraktCatalogFilters
 ): (TraktMovie | TraktShow)[] {
@@ -215,15 +464,6 @@ function applyCalendarPostFilters(
     filtered = filtered.filter((item) => {
       const votes = item.votes;
       return votes == null || votes >= minVotes;
-    });
-  }
-
-  if (filters.traktImdbRatingMin != null || filters.traktImdbRatingMax != null) {
-    const minR = filters.traktImdbRatingMin ?? 0;
-    const maxR = filters.traktImdbRatingMax ?? 10;
-    filtered = filtered.filter((item) => {
-      const r = item.rating;
-      return r == null || (r >= minR && r <= maxR);
     });
   }
 
@@ -426,14 +666,15 @@ export async function getRecommended(
 
 export async function getUpcomingCalendar(
   calendarType: string,
-  days: number,
+  range: CalendarDateRange,
   type: ContentType,
   filters?: TraktCatalogFilters,
   clientId?: string,
   page = 1
 ): Promise<{ items: (TraktMovie | TraktShow)[]; hasMore: boolean }> {
-  const clampedDays = Math.min(Math.max(days, 1), MAX_CALENDAR_RANGE_DAYS);
-  const cacheKey = `upcoming:${calendarType}:${clampedDays}:${type}:${clientId ?? ''}:${buildFilterParams(filters ?? {})}`;
+  const calendarSort = normalizeCalendarSort(filters?.traktCalendarSort, 'asc');
+  const isDescending = calendarSort === 'desc';
+  const cacheKey = `upcoming:${calendarType}:${range.signature}:${calendarSort}:${type}:${clientId ?? ''}:${buildFilterParams(filters ?? {})}`;
   const now = Date.now();
   const cached = calendarCache.get(cacheKey);
 
@@ -442,26 +683,13 @@ export async function getUpcomingCalendar(
   if (cached && now - cached.ts < CALENDAR_CACHE_TTL_MS) {
     allItems = cached.items;
   } else {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const overallEnd = new Date(today.getTime() + clampedDays * 24 * 60 * 60 * 1000);
-
-    const chunks: Array<{ startDate: string; chunkDays: number }> = [];
-    let currentStart = new Date(today);
-    while (currentStart < overallEnd) {
-      const msRemaining = overallEnd.getTime() - currentStart.getTime();
-      const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000));
-      const chunkDays = Math.min(daysRemaining, MAX_CALENDAR_CHUNK);
-      chunks.push({
-        startDate: currentStart.toISOString().split('T')[0],
-        chunkDays,
-      });
-      currentStart = new Date(currentStart.getTime() + chunkDays * 24 * 60 * 60 * 1000);
-    }
+    const chunks = buildCalendarChunks(range.startDate, range.endDate);
 
     log.debug('Trakt upcoming calendar', {
       calendarType,
-      days: clampedDays,
+      rangeStart: formatCalendarDate(range.startDate),
+      rangeEnd: formatCalendarDate(range.endDate),
+      sort: calendarSort,
       chunks: chunks.length,
     });
 
@@ -484,12 +712,21 @@ export async function getUpcomingCalendar(
       for (const entry of allMovies) {
         const key = entry.movie.ids.imdb || String(entry.movie.ids.tmdb || entry.movie.ids.trakt);
         const existing = movieMap.get(key);
-        if (!existing || (entry.released || '') < (existing.released || '')) {
+        if (
+          !existing ||
+          (isDescending
+            ? (entry.released || '') > (existing.released || '')
+            : (entry.released || '') < (existing.released || ''))
+        ) {
           movieMap.set(key, entry);
         }
       }
       allItems = Array.from(movieMap.values())
-        .sort((a, b) => (a.released || '').localeCompare(b.released || ''))
+        .sort((a, b) =>
+          isDescending
+            ? (b.released || '').localeCompare(a.released || '')
+            : (a.released || '').localeCompare(b.released || '')
+        )
         .map((i) => i.movie);
     } else {
       const chunkResults = await Promise.all(
@@ -504,16 +741,25 @@ export async function getUpcomingCalendar(
       for (const entry of allShows) {
         const key = entry.show.ids.imdb || entry.show.ids.slug || String(entry.show.ids.trakt);
         const existing = showMap.get(key);
-        if (!existing || (entry.first_aired || '') < (existing.first_aired || '')) {
+        if (
+          !existing ||
+          (isDescending
+            ? (entry.first_aired || '') > (existing.first_aired || '')
+            : (entry.first_aired || '') < (existing.first_aired || ''))
+        ) {
           showMap.set(key, entry);
         }
       }
       allItems = Array.from(showMap.values())
-        .sort((a, b) => (a.first_aired || '').localeCompare(b.first_aired || ''))
+        .sort((a, b) =>
+          isDescending
+            ? (b.first_aired || '').localeCompare(a.first_aired || '')
+            : (a.first_aired || '').localeCompare(b.first_aired || '')
+        )
         .map((i) => i.show);
     }
 
-    allItems = applyCalendarPostFilters(allItems, filters);
+    allItems = applyCorePostFilters(allItems, filters);
 
     calendarCache.set(cacheKey, { items: allItems, ts: now });
     if (calendarCache.size > 100) {
@@ -531,14 +777,15 @@ export async function getUpcomingCalendar(
 
 export async function getRecentlyAired(
   calendarType: string,
-  days: number,
+  range: CalendarDateRange,
   type: ContentType,
   filters?: TraktCatalogFilters,
   clientId?: string,
   page = 1
 ): Promise<{ items: (TraktMovie | TraktShow)[]; hasMore: boolean }> {
-  const clampedDays = Math.min(Math.max(days, 1), MAX_RECENTLY_AIRED_DAYS);
-  const cacheKey = `${calendarType}:${clampedDays}:${type}:${clientId ?? ''}:${buildFilterParams(filters ?? {})}`;
+  const calendarSort = normalizeCalendarSort(filters?.traktCalendarSort, 'desc');
+  const isDescending = calendarSort === 'desc';
+  const cacheKey = `recently:${calendarType}:${range.signature}:${calendarSort}:${type}:${clientId ?? ''}:${buildFilterParams(filters ?? {})}`;
   const now = Date.now();
   const cached = calendarCache.get(cacheKey);
 
@@ -547,24 +794,15 @@ export async function getRecentlyAired(
   if (cached && now - cached.ts < CALENDAR_CACHE_TTL_MS) {
     allItems = cached.items;
   } else {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999);
-    const overallStart = new Date(today.getTime() - clampedDays * 24 * 60 * 60 * 1000);
+    const chunks = buildCalendarChunks(range.startDate, range.endDate);
 
-    const chunks: Array<{ startDate: string; chunkDays: number }> = [];
-    let currentStart = new Date(overallStart);
-    while (currentStart < today) {
-      const msRemaining = today.getTime() - currentStart.getTime();
-      const daysRemaining = Math.ceil(msRemaining / (24 * 60 * 60 * 1000));
-      const chunkDays = Math.min(daysRemaining, MAX_CALENDAR_CHUNK);
-      chunks.push({
-        startDate: currentStart.toISOString().split('T')[0],
-        chunkDays,
-      });
-      currentStart = new Date(currentStart.getTime() + chunkDays * 24 * 60 * 60 * 1000);
-    }
-
-    log.debug('Trakt recently aired', { calendarType, days: clampedDays, chunks: chunks.length });
+    log.debug('Trakt recently aired', {
+      calendarType,
+      rangeStart: formatCalendarDate(range.startDate),
+      rangeEnd: formatCalendarDate(range.endDate),
+      sort: calendarSort,
+      chunks: chunks.length,
+    });
 
     const filterParts = ['extended=full'];
     if (filters) {
@@ -585,12 +823,21 @@ export async function getRecentlyAired(
       for (const entry of allMovies) {
         const key = entry.movie.ids.imdb || String(entry.movie.ids.tmdb || entry.movie.ids.trakt);
         const existing = movieMap.get(key);
-        if (!existing || (entry.released || '') > (existing.released || '')) {
+        if (
+          !existing ||
+          (isDescending
+            ? (entry.released || '') > (existing.released || '')
+            : (entry.released || '') < (existing.released || ''))
+        ) {
           movieMap.set(key, entry);
         }
       }
       allItems = Array.from(movieMap.values())
-        .sort((a, b) => (b.released || '').localeCompare(a.released || ''))
+        .sort((a, b) =>
+          isDescending
+            ? (b.released || '').localeCompare(a.released || '')
+            : (a.released || '').localeCompare(b.released || '')
+        )
         .map((i) => i.movie);
     } else {
       const chunkResults = await Promise.all(
@@ -605,16 +852,25 @@ export async function getRecentlyAired(
       for (const entry of allShows) {
         const key = entry.show.ids.imdb || entry.show.ids.slug || String(entry.show.ids.trakt);
         const existing = showMap.get(key);
-        if (!existing || (entry.first_aired || '') > (existing.first_aired || '')) {
+        if (
+          !existing ||
+          (isDescending
+            ? (entry.first_aired || '') > (existing.first_aired || '')
+            : (entry.first_aired || '') < (existing.first_aired || ''))
+        ) {
           showMap.set(key, entry);
         }
       }
       allItems = Array.from(showMap.values())
-        .sort((a, b) => (b.first_aired || '').localeCompare(a.first_aired || ''))
+        .sort((a, b) =>
+          isDescending
+            ? (b.first_aired || '').localeCompare(a.first_aired || '')
+            : (a.first_aired || '').localeCompare(b.first_aired || '')
+        )
         .map((i) => i.show);
     }
 
-    allItems = applyCalendarPostFilters(allItems, filters);
+    allItems = applyCorePostFilters(allItems, filters);
 
     calendarCache.set(cacheKey, { items: allItems, ts: now });
     if (calendarCache.size > 100) {
@@ -668,10 +924,6 @@ export async function getListItems(
   return { items, hasMore: data.length >= PAGE_LIMIT };
 }
 
-function todayDateString(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 export async function discover(
   filters: TraktCatalogFilters,
   type: ContentType,
@@ -680,47 +932,72 @@ export async function discover(
 ): Promise<{ items: (TraktMovie | TraktShow)[]; hasMore: boolean }> {
   const listType = normalizeTraktListType(filters.traktListType);
   const period = filters.traktPeriod || 'weekly';
-  const endpointFilters = shouldApplyFilters(listType) ? filters : undefined;
+  const normalizedFilters = stripUnreliableRatingFilters(listType, type, filters);
+  const endpointFilters = shouldApplyFilters(listType) ? normalizedFilters : undefined;
+
+  let result: { items: (TraktMovie | TraktShow)[]; hasMore: boolean };
 
   switch (listType) {
     case 'trending':
-      return getTrending(type, page, endpointFilters, clientId);
+      result = await getTrending(type, page, endpointFilters, clientId);
+      break;
     case 'popular':
-      return getPopular(type, page, endpointFilters, clientId);
+      result = await getPopular(type, page, endpointFilters, clientId);
+      break;
     case 'favorited':
-      return getFavorited(type, period, page, endpointFilters, clientId);
+      result = await getFavorited(type, period, page, endpointFilters, clientId);
+      break;
     case 'watched':
-      return getWatched(type, period, page, endpointFilters, clientId);
+      result = await getWatched(type, period, page, endpointFilters, clientId);
+      break;
     case 'played':
-      return getPlayed(type, period, page, endpointFilters, clientId);
+      result = await getPlayed(type, period, page, endpointFilters, clientId);
+      break;
     case 'collected':
-      return getCollected(type, period, page, endpointFilters, clientId);
+      result = await getCollected(type, period, page, endpointFilters, clientId);
+      break;
     case 'anticipated':
-      return getAnticipated(type, page, endpointFilters, clientId);
+      result = await getAnticipated(type, page, endpointFilters, clientId);
+      break;
     case 'boxoffice': {
       if (type !== 'movie') {
         return { items: [], hasMore: false };
       }
-      return getBoxOffice(clientId);
+      result = await getBoxOffice(clientId);
+      break;
     }
     case 'calendar': {
       const calType = filters.traktCalendarType || (type === 'movie' ? 'movies' : 'shows');
-      const days = Math.min(Math.max(filters.traktCalendarDays || 30, 1), MAX_CALENDAR_RANGE_DAYS);
-      return getUpcomingCalendar(calType, days, type, endpointFilters, clientId, page);
+      const range = resolveCalendarDateRange(filters, 'calendar', MAX_CALENDAR_RANGE_DAYS);
+      result = await getUpcomingCalendar(calType, range, type, endpointFilters, clientId, page);
+      break;
     }
     case 'recently_aired': {
       const calType = filters.traktCalendarType || (type === 'movie' ? 'movies' : 'shows');
-      const days = Math.min(Math.max(filters.traktCalendarDays || 30, 1), MAX_RECENTLY_AIRED_DAYS);
-      return getRecentlyAired(calType, days, type, endpointFilters, clientId, page);
+      const range = resolveCalendarDateRange(filters, 'recently_aired', MAX_RECENTLY_AIRED_DAYS);
+      result = await getRecentlyAired(calType, range, type, endpointFilters, clientId, page);
+      break;
     }
     case 'recommended':
-      return getRecommended(type, period, page, endpointFilters, clientId);
+      result = await getRecommended(type, period, page, endpointFilters, clientId);
+      break;
     case 'list': {
       const listId = filters.traktListId;
       if (!listId) return { items: [], hasMore: false };
-      return getListItems(listId, type, page, clientId);
+      result = await getListItems(listId, type, page, clientId);
+      break;
     }
     default:
-      return getTrending(type, page, endpointFilters, clientId);
+      result = await getTrending(type, page, endpointFilters, clientId);
+      break;
   }
+
+  if (listType === 'calendar' || listType === 'recently_aired') {
+    return result;
+  }
+
+  return {
+    ...result,
+    items: applyCorePostFilters(result.items, normalizedFilters),
+  };
 }

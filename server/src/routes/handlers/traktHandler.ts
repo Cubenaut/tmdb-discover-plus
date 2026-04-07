@@ -1,13 +1,18 @@
 import type { Request, Response } from 'express';
 import type { ContentType } from '../../types/common.ts';
 import type { StremioMetaPreview, CatalogConfig } from '../../types/index.ts';
-import { getUserConfig, getTraktKeyFromConfig } from '../../services/configService.ts';
+import {
+  getUserConfig,
+  getTraktKeyFromConfig,
+  getPosterKeyFromConfig,
+} from '../../services/configService.ts';
 import { getCache } from '../../services/cache/index.ts';
 import * as trakt from '../../services/trakt/index.ts';
 import { config } from '../../config.ts';
 import { createLogger } from '../../utils/logger.ts';
 import { shuffleArray } from '../../utils/helpers.ts';
 import { CACHE_TTLS, buildCatalogId, catalogServerTtl } from '../../constants.ts';
+import type { PosterOptions } from '../../types/config.ts';
 
 const log = createLogger('addon:trakt');
 const PAGE_SIZE = 20;
@@ -30,7 +35,8 @@ async function fetchWithBackfill(
   ) => Promise<{ items: (trakt.TraktMovie | trakt.TraktShow)[]; hasMore: boolean }>,
   type: ContentType,
   startPage: number,
-  excludeGenres?: string[]
+  excludeGenres?: string[],
+  posterOptions: PosterOptions | null = null
 ): Promise<StremioMetaPreview[]> {
   const metas: StremioMetaPreview[] = [];
   let currentPage = startPage;
@@ -39,7 +45,7 @@ async function fetchWithBackfill(
   while (metas.length < PAGE_SIZE && pagesChecked < MAX_BACKFILL_PAGES) {
     const result = await fetchPage(currentPage);
     const filtered = filterExcludedGenres(result.items, excludeGenres);
-    const batch = trakt.batchConvertToStremioMeta(filtered, type);
+    const batch = trakt.batchConvertToStremioMeta(filtered, type, posterOptions);
     metas.push(...batch);
     pagesChecked++;
 
@@ -72,6 +78,18 @@ export async function handleTraktCatalogRequest(
 
     const traktClientId =
       config.traktApi.clientId || getTraktKeyFromConfig(userConfig) || undefined;
+    const posterOptions: PosterOptions | null =
+      userConfig.preferences?.posterService && userConfig.preferences.posterService !== 'none'
+        ? (() => {
+            const apiKey = getPosterKeyFromConfig(userConfig);
+            return apiKey
+              ? {
+                  apiKey,
+                  service: userConfig.preferences.posterService,
+                }
+              : null;
+          })()
+        : null;
 
     if (catalogId === 'trakt-search-movie' || catalogId === 'trakt-search-series') {
       if (!searchQuery || !traktClientId) {
@@ -79,7 +97,7 @@ export async function handleTraktCatalogRequest(
         return;
       }
       const result = await trakt.searchTrakt(searchQuery, type, page, traktClientId);
-      const metas = trakt.batchConvertToStremioMeta(result.items, type);
+      const metas = trakt.batchConvertToStremioMeta(result.items, type, posterOptions);
       res.set(
         'Cache-Control',
         `max-age=${CACHE_TTLS.CATALOG_HEADER}, stale-while-revalidate=${CACHE_TTLS.CATALOG_STALE_REVALIDATE}, stale-if-error=259200`
@@ -108,7 +126,7 @@ export async function handleTraktCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
-    const listType = filters.traktListType || 'trending';
+    const listType = filters.traktListType || 'calendar';
     const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
     const excludeGenres = filters.traktExcludeGenres as string[] | undefined;
 
@@ -142,7 +160,7 @@ export async function handleTraktCatalogRequest(
       const probe = await trakt.discover(filters, type, 1, traktClientId);
       const filteredItems = filterExcludedGenres(probe.items, excludeGenres);
       if (listType === 'boxoffice' || listType === 'calendar' || listType === 'recently_aired') {
-        metas = trakt.batchConvertToStremioMeta(filteredItems, type);
+        metas = trakt.batchConvertToStremioMeta(filteredItems, type, posterOptions);
         metas = shuffleArray(metas).slice(0, PAGE_SIZE);
       } else {
         const maxPage = probe.hasMore ? 5 : 1;
@@ -151,7 +169,8 @@ export async function handleTraktCatalogRequest(
           (p) => trakt.discover(filters, type, p, traktClientId),
           type,
           randomPage,
-          excludeGenres
+          excludeGenres,
+          posterOptions
         );
         metas = shuffleArray(metas);
       }
@@ -160,7 +179,8 @@ export async function handleTraktCatalogRequest(
         (p) => trakt.discover(filters, type, p, traktClientId),
         type,
         page,
-        excludeGenres
+        excludeGenres,
+        posterOptions
       );
     }
 

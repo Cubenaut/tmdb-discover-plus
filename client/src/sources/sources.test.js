@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TMDB_SOURCE } from './tmdb.source';
 import { IMDB_SOURCE } from './imdb.source';
+import { TRAKT_SOURCE } from './trakt.source';
 import { getSource, getAllSources } from './index';
 
 const IMDB_ONLY_SAMPLE = {
@@ -194,5 +195,42 @@ describe('source registry', () => {
     const all = getAllSources();
     expect(all.map((s) => s.id)).toContain('tmdb');
     expect(all.map((s) => s.id)).toContain('imdb');
+  });
+});
+
+describe('TRAKT_SOURCE descriptor', () => {
+  it('does not persist list type defaults', () => {
+    expect(Object.prototype.hasOwnProperty.call(TRAKT_SOURCE.defaultFilters, 'traktListType')).toBe(
+      false
+    );
+    expect(Object.prototype.hasOwnProperty.call(TRAKT_SOURCE.defaultFilters, 'traktPeriod')).toBe(
+      false
+    );
+  });
+
+  it('does not add a list chip when list type is omitted', () => {
+    const chips = TRAKT_SOURCE.computeActiveChips({}, {});
+    expect(chips.find((chip) => chip.key === 'traktListType')).toBeUndefined();
+  });
+
+  it('shows calendar date-order chip only for non-default ordering', () => {
+    const chips = TRAKT_SOURCE.computeActiveChips(
+      {
+        traktListType: 'calendar',
+        traktCalendarSort: 'desc',
+      },
+      {}
+    );
+
+    expect(chips.find((chip) => chip.key === 'traktCalendarSort')?.label).toContain('Descending');
+
+    const defaultChips = TRAKT_SOURCE.computeActiveChips(
+      {
+        traktListType: 'recently_aired',
+        traktCalendarSort: 'desc',
+      },
+      {}
+    );
+    expect(defaultChips.find((chip) => chip.key === 'traktCalendarSort')).toBeUndefined();
   });
 });

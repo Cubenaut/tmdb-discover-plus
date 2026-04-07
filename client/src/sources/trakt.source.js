@@ -1,5 +1,6 @@
 import { lazy } from 'react';
 import {
+  formatTraktCalendarWindowLabel,
   normalizeTraktListType,
   supportsTraktCalendarSettings,
   supportsTraktPeriod,
@@ -108,13 +109,11 @@ const NON_TRAKT_KEYS = [
 export const TRAKT_SOURCE = {
   id: 'trakt',
   label: 'Trakt',
-  defaultSortBy: 'trending',
+  defaultSortBy: 'calendar',
 
   defaultFilters: {
     genres: [],
     excludeGenres: [],
-    traktListType: 'trending',
-    traktPeriod: 'weekly',
     traktExcludeGenres: [],
   },
 
@@ -138,8 +137,9 @@ export const TRAKT_SOURCE = {
     } = refData;
     const active = [];
     const normalizedListType = normalizeTraktListType(filters.traktListType);
+    const defaultCalendarSort = normalizedListType === 'recently_aired' ? 'desc' : 'asc';
 
-    if (normalizedListType !== 'trending') {
+    if (normalizedListType !== 'calendar') {
       const match =
         traktListTypes.find((t) => t.value === normalizedListType) ||
         traktCommunityMetrics.find((m) => m.value === normalizedListType);
@@ -172,10 +172,42 @@ export const TRAKT_SOURCE = {
       });
     }
 
-    if (filters.traktCalendarDays && supportsTraktCalendarSettings(normalizedListType)) {
+    if (
+      supportsTraktCalendarSettings(normalizedListType) &&
+      filters.traktCalendarSort &&
+      filters.traktCalendarSort !== defaultCalendarSort
+    ) {
+      active.push({
+        key: 'traktCalendarSort',
+        label: `Date Order: ${filters.traktCalendarSort === 'desc' ? 'Descending' : 'Ascending'}`,
+        section: 'filters',
+      });
+    }
+
+    if (
+      supportsTraktCalendarSettings(normalizedListType) &&
+      (filters.traktCalendarStartDate || filters.traktCalendarEndDate)
+    ) {
+      active.push({
+        key: 'traktCalendarRange',
+        label: `Range: ${filters.traktCalendarStartDate || '...'} to ${filters.traktCalendarEndDate || '...'}`,
+        section: 'filters',
+      });
+    }
+
+    if (
+      filters.traktCalendarDays &&
+      supportsTraktCalendarSettings(normalizedListType) &&
+      !filters.traktCalendarStartDate &&
+      !filters.traktCalendarEndDate
+    ) {
+      const windowLabel = formatTraktCalendarWindowLabel(
+        normalizedListType,
+        filters.traktCalendarDays
+      );
       active.push({
         key: 'traktCalendarDays',
-        label: `${normalizedListType === 'recently_aired' ? 'Last' : 'Next'} ${filters.traktCalendarDays} days`,
+        label: windowLabel || `Last ${filters.traktCalendarDays} days`,
         section: 'filters',
       });
     }

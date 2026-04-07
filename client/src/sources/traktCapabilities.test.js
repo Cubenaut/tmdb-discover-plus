@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  formatTraktCalendarWindowLabel,
   getAvailableBrowseTypes,
   getBrowseTypeForListType,
+  getTraktExternalRatingFilterSupport,
+  supportsTraktCoreRatingVoteFilters,
+  supportsTraktDirectExternalRatingFilters,
   getDefaultListTypeForBrowseType,
   getListTypeOptionsForBrowseType,
   normalizeTraktListType,
@@ -30,7 +34,7 @@ const communityMetrics = [
 describe('traktCapabilities', () => {
   it('normalizes community_stats to watched', () => {
     expect(normalizeTraktListType('community_stats')).toBe('watched');
-    expect(normalizeTraktListType(undefined)).toBe('trending');
+    expect(normalizeTraktListType(undefined)).toBe('calendar');
   });
 
   it('resolves browse type by list type', () => {
@@ -80,5 +84,58 @@ describe('traktCapabilities', () => {
     expect(supportsTraktCalendarSettings('trending')).toBe(false);
     expect(supportsTraktAdvancedFilters('boxoffice')).toBe(false);
     expect(supportsTraktAdvancedFilters('trending')).toBe(true);
+    expect(supportsTraktDirectExternalRatingFilters('calendar', 'movie')).toBe(true);
+    expect(supportsTraktDirectExternalRatingFilters('calendar', 'series')).toBe(true);
+    expect(supportsTraktDirectExternalRatingFilters('trending', 'movie')).toBe(true);
+    expect(supportsTraktDirectExternalRatingFilters('boxoffice', 'movie')).toBe(false);
+    expect(supportsTraktCoreRatingVoteFilters('boxoffice')).toBe(true);
+    expect(supportsTraktCoreRatingVoteFilters('list')).toBe(false);
+  });
+
+  it('returns media-type-aware external rating support matrix', () => {
+    expect(getTraktExternalRatingFilterSupport('calendar', 'movie')).toMatchObject({
+      imdbRatings: true,
+      tmdbRatings: true,
+      rtMeters: true,
+      rtUserMeters: true,
+      metascores: false,
+      imdbVotes: true,
+      tmdbVotes: true,
+    });
+
+    expect(getTraktExternalRatingFilterSupport('calendar', 'series')).toMatchObject({
+      imdbRatings: false,
+      tmdbRatings: true,
+      rtMeters: false,
+      rtUserMeters: false,
+      metascores: false,
+      imdbVotes: false,
+      tmdbVotes: true,
+    });
+
+    expect(getTraktExternalRatingFilterSupport('trending', 'series')).toMatchObject({
+      imdbRatings: true,
+      tmdbRatings: true,
+      rtMeters: false,
+      rtUserMeters: false,
+      metascores: false,
+      imdbVotes: true,
+      tmdbVotes: true,
+    });
+  });
+
+  it('formats calendar window labels by list type semantics', () => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const endOfYear = new Date(Date.UTC(today.getUTCFullYear(), 11, 31));
+    const daysToYearEnd = Math.max(
+      Math.floor((endOfYear.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)) + 1,
+      1
+    );
+
+    expect(formatTraktCalendarWindowLabel('calendar', 7)).toBe('Next Week Releases');
+    expect(formatTraktCalendarWindowLabel('calendar', 30)).toBe('Next Month');
+    expect(formatTraktCalendarWindowLabel('calendar', daysToYearEnd)).toBe('This Year');
+    expect(formatTraktCalendarWindowLabel('recently_aired', 30)).toBe('Last 30 days');
   });
 });

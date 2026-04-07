@@ -12,6 +12,7 @@ import {
   getApiKeyFromConfig,
   getPublicStats,
   getTraktKeyFromConfig,
+  getPosterKeyFromConfig,
 } from '../services/configService.ts';
 import * as tmdb from '../services/tmdb/index.ts';
 import * as imdb from '../services/imdb/index.ts';
@@ -1137,15 +1138,30 @@ router.post('/trakt/preview', requireAuth, resolveApiKey, async (req, res) => {
     const { filters, type } = req.body;
     const safeFilters = filters || {};
     const randomize = Boolean(safeFilters.randomize || safeFilters.sortBy === 'random');
+    const previewListType = safeFilters.traktListType || 'calendar';
     const contentType = (type === 'series' ? 'series' : 'movie') as ContentType;
     const metas: import('../types/stremio.ts').StremioMetaPreview[] = [];
     let page = 1;
 
+    const apiKey = getApiKey(req);
+    const configs = await getConfigsByApiKey(apiKey);
+    const userConfig = configs[0] || null;
+    const posterOptions =
+      userConfig?.preferences?.posterService && userConfig.preferences.posterService !== 'none'
+        ? (() => {
+            const posterApiKey = getPosterKeyFromConfig(userConfig);
+            return posterApiKey
+              ? {
+                  apiKey: posterApiKey,
+                  service: userConfig.preferences.posterService,
+                }
+              : null;
+          })()
+        : null;
+
     // Resolve Trakt Client ID: server env var → user's saved key
     let traktClientId: string | null = config.traktApi.clientId || null;
     if (!traktClientId) {
-      const apiKey = getApiKey(req);
-      const configs = await getConfigsByApiKey(apiKey);
       if (configs.length > 0) {
         traktClientId = getTraktKeyFromConfig(configs[0]);
       }
@@ -1169,12 +1185,12 @@ router.post('/trakt/preview', requireAuth, resolveApiKey, async (req, res) => {
           )
         : probe.items;
       if (
-        safeFilters.traktListType === 'boxoffice' ||
-        safeFilters.traktListType === 'calendar' ||
-        safeFilters.traktListType === 'recently_aired'
+        previewListType === 'boxoffice' ||
+        previewListType === 'calendar' ||
+        previewListType === 'recently_aired'
       ) {
         const previewMetas = shuffleArray(
-          trakt.batchConvertToStremioMeta(filteredItems, contentType)
+          trakt.batchConvertToStremioMeta(filteredItems, contentType, posterOptions)
         );
         return res.json({ metas: previewMetas.slice(0, PREVIEW_PAGE_SIZE), totalResults: null });
       }
@@ -1190,7 +1206,7 @@ router.post('/trakt/preview', requireAuth, resolveApiKey, async (req, res) => {
             (item) => !(item.genres || []).some((g: string) => excludeGenres.includes(g))
           )
         : result.items;
-      metas.push(...trakt.batchConvertToStremioMeta(filtered, contentType));
+      metas.push(...trakt.batchConvertToStremioMeta(filtered, contentType, posterOptions));
       pages++;
       if (!result.hasMore || result.items.length === 0) break;
       page++;

@@ -34,8 +34,8 @@ const RECENTLY_AIRED_DAY_PRESETS = [
   { value: '3650', label: '10 Years' },
 ];
 const CALENDAR_SORT_OPTIONS = [
-  { value: 'asc', label: 'Ascending (Oldest → Newest)' },
   { value: 'desc', label: 'Descending (Newest → Oldest)' },
+  { value: 'asc', label: 'Ascending (Oldest → Newest)' },
 ];
 
 function getDaysUntilEndOfYearUtc() {
@@ -171,7 +171,7 @@ export function TraktFilterPanel({
     activeListType,
     catalogType
   );
-  const defaultCalendarSort = activeListType === 'recently_aired' ? 'desc' : 'asc';
+  const defaultCalendarSort = 'desc';
   const activeCalendarSort = filters.traktCalendarSort || defaultCalendarSort;
   const upcomingDayPresets = useMemo(() => {
     const daysToYearEnd = getDaysUntilEndOfYearUtc();

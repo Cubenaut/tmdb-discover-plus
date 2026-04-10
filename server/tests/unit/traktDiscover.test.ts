@@ -399,6 +399,39 @@ describe('trakt discover routing', () => {
     expect(result.items[1]?.title).toBe('Older Upcoming');
   });
 
+  it('defaults upcoming calendar date order to newest first when sort is omitted', async () => {
+    mockedTraktFetch.mockResolvedValue([
+      {
+        released: '2024-01-01',
+        movie: {
+          title: 'Older Upcoming',
+          ids: { trakt: 303, slug: 'older-upcoming-default' },
+        },
+      },
+      {
+        released: '2024-01-03',
+        movie: {
+          title: 'Newer Upcoming',
+          ids: { trakt: 304, slug: 'newer-upcoming-default' },
+        },
+      },
+    ]);
+
+    const result = await discover(
+      {
+        traktListType: 'calendar',
+        traktCalendarType: 'movies',
+        traktCalendarDays: 7,
+      },
+      'movie',
+      1,
+      'client-id-calendar-default-desc'
+    );
+
+    expect(result.items[0]?.title).toBe('Newer Upcoming');
+    expect(result.items[1]?.title).toBe('Older Upcoming');
+  });
+
   it('supports ascending date order for recently aired range', async () => {
     mockedTraktFetch.mockResolvedValue([
       {

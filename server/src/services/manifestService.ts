@@ -5,6 +5,7 @@ import * as tmdb from './tmdb/index.ts';
 import { isImdbApiEnabled } from './imdb/index.ts';
 import { getSource } from './sources/registry.ts';
 import { normalizeGenreName, parseIdArray } from '../utils/helpers.ts';
+import { resolveDynamicDatePreset } from '../utils/dateHelpers.ts';
 import { createLogger } from '../utils/logger.ts';
 import { getApiKeyFromConfig, updateCatalogGenres } from './configService.ts';
 import { config } from '../config.ts';
@@ -24,6 +25,134 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'
 const ADDON_VERSION = pkg.version;
 
 type StremioExtraMode = 'genre' | 'year' | 'sortBy' | 'certification';
+
+const MIN_DROPDOWN_YEAR = 1900;
+
+function parseNumericYear(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function parseYearFromDateLike(value: unknown): number | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const match = value.trim().match(/^(\d{4})/);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeDropdownYearBounds(
+  lower: number,
+  upper: number,
+  maxYear: number
+): { lower: number; upper: number } {
+  const boundedUpper = Math.min(Math.max(upper, MIN_DROPDOWN_YEAR), maxYear);
+  const boundedLower = Math.min(Math.max(lower, MIN_DROPDOWN_YEAR), boundedUpper);
+
+  return { lower: boundedLower, upper: boundedUpper };
+}
+
+function buildYearDropdownOptions(
+  filters: Record<string, unknown> | undefined,
+  catalogType: 'movie' | 'series'
+): string[] {
+  const nowYear = new Date().getFullYear();
+  const maxYear = filters?.releasedOnly === true ? nowYear : nowYear + 2;
+  const resolved = resolveDynamicDatePreset(filters || {}, catalogType);
+
+  const isMovie = catalogType === 'movie';
+  const fromDateField = isMovie ? 'releaseDateFrom' : 'airDateFrom';
+  const toDateField = isMovie ? 'releaseDateTo' : 'airDateTo';
+  const exactYearField = isMovie ? 'primaryReleaseYear' : 'firstAirDateYear';
+
+  const lowerCandidates: number[] = [];
+  const upperCandidates: number[] = [];
+
+  const yearFrom = parseNumericYear(resolved.yearFrom);
+  if (yearFrom != null) lowerCandidates.push(yearFrom);
+
+  const yearTo = parseNumericYear(resolved.yearTo);
+  if (yearTo != null) upperCandidates.push(yearTo);
+
+  const dateFrom = parseYearFromDateLike(resolved[fromDateField]);
+  if (dateFrom != null) lowerCandidates.push(dateFrom);
+
+  const dateTo = parseYearFromDateLike(resolved[toDateField]);
+  if (dateTo != null) upperCandidates.push(dateTo);
+
+  if (!isMovie) {
+    const firstAirFrom = parseYearFromDateLike(resolved.firstAirDateFrom);
+    if (firstAirFrom != null) lowerCandidates.push(firstAirFrom);
+
+    const firstAirTo = parseYearFromDateLike(resolved.firstAirDateTo);
+    if (firstAirTo != null) upperCandidates.push(firstAirTo);
+  }
+
+  const exactYear = parseNumericYear(resolved[exactYearField]);
+  if (exactYear != null) {
+    lowerCandidates.push(exactYear);
+    upperCandidates.push(exactYear);
+  }
+
+  const candidateLower =
+    lowerCandidates.length > 0 ? Math.max(...lowerCandidates) : MIN_DROPDOWN_YEAR;
+  const candidateUpper = upperCandidates.length > 0 ? Math.min(...upperCandidates) : maxYear;
+  const { lower, upper } = normalizeDropdownYearBounds(candidateLower, candidateUpper, maxYear);
+
+  const options = ['All'];
+  for (let year = upper; year >= lower; year -= 1) {
+    options.push(String(year));
+  }
+
+  return options;
+}
+
+function buildCertificationDropdownOptions(
+  filters: Record<string, unknown> | undefined,
+  countryCerts: { certification: string }[]
+): string[] {
+  const available = Array.from(
+    new Set(
+      (countryCerts || [])
+        .map((entry) => entry?.certification)
+        .filter((cert): cert is string => typeof cert === 'string' && cert.trim().length > 0)
+    )
+  );
+
+  const selectedValues = [
+    ...(Array.isArray(filters?.certifications) ? filters.certifications : []),
+    ...(typeof filters?.certification === 'string' ? [filters.certification] : []),
+  ]
+    .map((value) => String(value).trim())
+    .filter((value) => value.length > 0);
+
+  const selectedSet = new Set(selectedValues.map((value) => value.toLowerCase()));
+  const selectedOnly =
+    selectedSet.size > 0
+      ? available.filter((value) => selectedSet.has(value.toLowerCase()))
+      : available;
+
+  const fallbackSelectedOnly =
+    selectedSet.size > 0 && selectedOnly.length === 0
+      ? Array.from(new Set(selectedValues))
+      : selectedOnly;
+
+  return ['All', ...fallbackSelectedOnly];
+}
 
 function getStremioExtraMode(filters: Record<string, unknown> | undefined): StremioExtraMode {
   const rawMode = filters?.stremioExtraMode;
@@ -392,7 +521,7 @@ export async function enrichManifestWithExtras(
   if (!manifest.catalogs || !Array.isArray(manifest.catalogs) || !userConfig) return;
 
   const apiKey = getApiKeyFromConfig(userConfig);
-  let certCache: Record<string, Record<string, { certification: string }[]>> = {};
+  const certCache: Record<string, Record<string, { certification: string }[]>> = {};
 
   for (const catalog of manifest.catalogs) {
     if (catalog.id.includes('-search-')) continue;
@@ -414,11 +543,10 @@ export async function enrichManifestWithExtras(
     catalog.extra = (catalog.extra || []).filter((e) => e.name !== 'genre');
 
     if (dropdownMode === 'year') {
-      const currentYear = new Date().getFullYear();
-      const years: string[] = ['All'];
-      for (let y = currentYear + 2; y >= 1900; y--) {
-        years.push(String(y));
-      }
+      const years = buildYearDropdownOptions(
+        savedCatalog.filters as Record<string, unknown> | undefined,
+        catalogType
+      );
       catalog.extra.push({ name: 'genre', options: years, optionsLimit: 1 });
     }
 
@@ -433,18 +561,18 @@ export async function enrichManifestWithExtras(
 
     if (dropdownMode === 'certification') {
       try {
-        const country = savedCatalog.filters?.certificationCountry || 'US';
-        const cacheKey = `${catalogType}:${country}`;
-        if (!certCache[cacheKey] && apiKey) {
+        const country = String(savedCatalog.filters?.certificationCountry || 'US').toUpperCase();
+        if (!certCache[catalogType] && apiKey) {
           const allCerts = await tmdb.getCertifications(apiKey, catalogType);
-          certCache[cacheKey] = allCerts as Record<string, { certification: string }[]>;
+          certCache[catalogType] = allCerts as Record<string, { certification: string }[]>;
         }
-        const countryMap = certCache[cacheKey];
-        const countryCerts = countryMap?.[country] || countryMap?.['US'] || [];
-        if (countryCerts.length > 0) {
-          const certOptions = ['All', ...countryCerts.map((c) => c.certification).filter(Boolean)];
-          catalog.extra.push({ name: 'genre', options: certOptions, optionsLimit: 1 });
-        }
+        const countryMap = certCache[catalogType] || {};
+        const countryCerts = countryMap[country] || [];
+        const certOptions = buildCertificationDropdownOptions(
+          savedCatalog.filters as Record<string, unknown> | undefined,
+          countryCerts
+        );
+        catalog.extra.push({ name: 'genre', options: certOptions, optionsLimit: 1 });
       } catch (err) {
         log.warn('Error building certification extras', { error: (err as Error).message });
       }

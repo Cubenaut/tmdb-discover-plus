@@ -137,7 +137,7 @@ export const TRAKT_SOURCE = {
     } = refData;
     const active = [];
     const normalizedListType = normalizeTraktListType(filters.traktListType);
-    const defaultCalendarSort = normalizedListType === 'recently_aired' ? 'desc' : 'asc';
+    const defaultCalendarSort = 'desc';
 
     if (normalizedListType !== 'calendar') {
       const match =

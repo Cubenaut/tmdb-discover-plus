@@ -785,7 +785,7 @@ export function useActiveFilters({
 
     if (source === 'trakt') {
       const listType = normalizeTraktListType(filters.traktListType);
-      const defaultCalendarSort = listType === 'recently_aired' ? 'desc' : 'asc';
+      const defaultCalendarSort = 'desc';
       if (listType !== 'calendar') {
         const allOptions = [...traktListTypes, ...traktCommunityMetrics];
         const typeLabel = getOptionLabel(allOptions, listType);

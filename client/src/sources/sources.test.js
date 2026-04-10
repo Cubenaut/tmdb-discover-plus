@@ -217,12 +217,21 @@ describe('TRAKT_SOURCE descriptor', () => {
     const chips = TRAKT_SOURCE.computeActiveChips(
       {
         traktListType: 'calendar',
-        traktCalendarSort: 'desc',
+        traktCalendarSort: 'asc',
       },
       {}
     );
 
-    expect(chips.find((chip) => chip.key === 'traktCalendarSort')?.label).toContain('Descending');
+    expect(chips.find((chip) => chip.key === 'traktCalendarSort')?.label).toContain('Ascending');
+
+    const defaultCalendarChips = TRAKT_SOURCE.computeActiveChips(
+      {
+        traktListType: 'calendar',
+        traktCalendarSort: 'desc',
+      },
+      {}
+    );
+    expect(defaultCalendarChips.find((chip) => chip.key === 'traktCalendarSort')).toBeUndefined();
 
     const defaultChips = TRAKT_SOURCE.computeActiveChips(
       {

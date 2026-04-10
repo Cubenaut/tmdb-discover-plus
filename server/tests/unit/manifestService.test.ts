@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../src/services/tmdb/index.ts', () => ({
   getGenres: vi.fn(),
+  getCertifications: vi.fn(),
 }));
 vi.mock('../../src/utils/helpers.ts', () => ({
   normalizeGenreName: vi.fn((s: string) => s.toLowerCase()),
@@ -28,9 +29,15 @@ vi.mock('../../src/services/imdb/index.ts', () => ({
 
 import { buildManifest } from '../../src/services/manifestService.ts';
 import { enrichManifestWithExtras } from '../../src/services/manifestService.ts';
+import * as tmdb from '../../src/services/tmdb/index.ts';
+import { getApiKeyFromConfig } from '../../src/services/configService.ts';
 
 describe('buildManifest', () => {
   const baseUrl = 'https://example.com';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('builds manifest with catalogs', () => {
     const userConfig = {
@@ -141,8 +148,44 @@ describe('buildManifest', () => {
     const genreExtra = target?.extra.find((e) => e.name === 'genre');
     expect(genreExtra).toBeTruthy();
     expect(genreExtra?.options?.[0]).toBe('All');
-    expect(genreExtra?.options).toContain('2026');
+    expect(genreExtra?.options).toContain(String(new Date().getFullYear()));
     expect(target?.extra.some((e) => e.name === 'year')).toBe(false);
+  });
+
+  it('limits year options to selected range and excludes future years when releasedOnly is enabled', async () => {
+    const currentYear = new Date().getFullYear();
+    const userConfig = {
+      userId: 'user-year-range',
+      catalogs: [
+        {
+          _id: 'tmdb-year-range',
+          name: 'Year Range Catalog',
+          type: 'movie',
+          source: 'tmdb',
+          enabled: true,
+          filters: {
+            stremioExtraMode: 'year',
+            releasedOnly: true,
+            yearFrom: currentYear - 2,
+            yearTo: currentYear + 3,
+          },
+        },
+      ],
+      preferences: { disableSearch: true },
+    };
+
+    const manifest = buildManifest(userConfig as any, baseUrl);
+    await enrichManifestWithExtras(manifest, userConfig as any);
+
+    const target = manifest.catalogs.find((c) => c.id === 'tmdb-tmdb-year-range');
+    const genreExtra = target?.extra.find((e) => e.name === 'genre');
+
+    expect(genreExtra?.options).toEqual([
+      'All',
+      String(currentYear),
+      String(currentYear - 1),
+      String(currentYear - 2),
+    ]);
   });
 
   it('maps sortBy mode to a single genre dropdown options list', async () => {
@@ -171,5 +214,44 @@ describe('buildManifest', () => {
     expect(genreExtra?.options?.[0]).toBe('All');
     expect(genreExtra?.options).toContain('Most Popular');
     expect(target?.extra.some((e) => e.name === 'sortBy')).toBe(false);
+  });
+
+  it('maps certification options to selected country and selected certifications only', async () => {
+    const getCertificationsMock = vi.mocked(tmdb.getCertifications);
+    const getApiKeyMock = vi.mocked(getApiKeyFromConfig);
+    getApiKeyMock.mockReturnValue('tmdb-key');
+    getCertificationsMock.mockResolvedValue({
+      US: [{ certification: 'PG' }, { certification: 'R' }],
+      DE: [{ certification: 'FSK 12' }, { certification: 'FSK 16' }],
+    } as any);
+
+    const userConfig = {
+      userId: 'user-cert-country',
+      catalogs: [
+        {
+          _id: 'tmdb-cert-country',
+          name: 'Certification Catalog',
+          type: 'movie',
+          source: 'tmdb',
+          enabled: true,
+          filters: {
+            stremioExtraMode: 'certification',
+            certificationCountry: 'DE',
+            certifications: ['FSK 16'],
+          },
+        },
+      ],
+      preferences: { disableSearch: true },
+    };
+
+    const manifest = buildManifest(userConfig as any, baseUrl);
+    await enrichManifestWithExtras(manifest, userConfig as any);
+
+    const target = manifest.catalogs.find((c) => c.id === 'tmdb-tmdb-cert-country');
+    const genreExtra = target?.extra.find((e) => e.name === 'genre');
+
+    expect(genreExtra?.options).toEqual(['All', 'FSK 16']);
+    expect(genreExtra?.options).not.toContain('PG');
+    expect(getCertificationsMock).toHaveBeenCalledWith('tmdb-key', 'movie');
   });
 });

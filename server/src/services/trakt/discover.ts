@@ -294,7 +294,7 @@ function resolveCalendarDateRange(
   const inputStart = parseCalendarDate(filters.traktCalendarStartDate);
   const inputEnd = parseCalendarDate(filters.traktCalendarEndDate);
   const hasExplicitRange = Boolean(inputStart || inputEnd);
-  const defaultSort = listType === 'recently_aired' ? 'desc' : 'asc';
+  const defaultSort: CalendarSortDirection = 'desc';
   const calendarSort = normalizeCalendarSort(filters.traktCalendarSort, defaultSort);
 
   let startDate: Date;
@@ -672,7 +672,7 @@ export async function getUpcomingCalendar(
   clientId?: string,
   page = 1
 ): Promise<{ items: (TraktMovie | TraktShow)[]; hasMore: boolean }> {
-  const calendarSort = normalizeCalendarSort(filters?.traktCalendarSort, 'asc');
+  const calendarSort = normalizeCalendarSort(filters?.traktCalendarSort, 'desc');
   const isDescending = calendarSort === 'desc';
   const cacheKey = `upcoming:${calendarType}:${range.signature}:${calendarSort}:${type}:${clientId ?? ''}:${buildFilterParams(filters ?? {})}`;
   const now = Date.now();

@@ -19,6 +19,7 @@ import {
   Settings,
   LayoutList,
   Coffee,
+  Heart,
 } from 'lucide-react';
 import { DiscordIcon } from '../social/DiscordButton.jsx';
 import { useState, useEffect, lazy, Suspense, memo } from 'react';
@@ -27,6 +28,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useCatalog, useTMDBData, useAppActions } from '../../context/AppContext';
 import { CatalogListSkeleton } from '../layout/Skeleton';
 import { GeneralSettingsSection } from './GeneralSettingsSection';
+import { DonateModal } from '../modals/DonateModal';
 import { PosterSettingsSection } from './PosterSettingsSection';
 import { ImportSelectModal } from '../modals/ImportSelectModal';
 import { ExportSelectModal } from '../modals/ExportSelectModal';
@@ -86,6 +88,7 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
   const [importData, setImportData] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [isDonateOpen, setIsDonateOpen] = useState(false);
 
   useEffect(() => {
     setMoviePresetsCollapsed(isMobile);
@@ -145,16 +148,14 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
             <DiscordIcon className="sidebar-support-icon" />
             <span>Discord</span>
           </a>
-          <a
-            href="https://buymeacoffee.com/semi.column"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="sidebar-support-btn sidebar-support-bmc"
-            title="Buy me a coffee"
+          <button
+            onClick={() => setIsDonateOpen(true)}
+            className="sidebar-support-btn sidebar-support-donate"
+            title="Donate"
           >
-            <Coffee size={14} />
-            <span>Buy me a coffee</span>
-          </a>
+            <Heart size={14} />
+            <span>Donate</span>
+          </button>
         </div>
       </div>
 
@@ -551,6 +552,7 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
           }}
         />
       )}
+      <DonateModal isOpen={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
     </aside>
   );
 });

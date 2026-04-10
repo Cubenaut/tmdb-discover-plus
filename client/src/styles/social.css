@@ -65,17 +65,17 @@
   flex-shrink: 0;
 }
 
-.sidebar-support-bmc {
-  background: linear-gradient(135deg, rgba(255, 221, 0, 0.15), rgba(255, 129, 63, 0.2));
-  color: #ffd700;
-  border: 1px solid rgba(255, 221, 0, 0.4);
+.sidebar-support-donate {
+  background: linear-gradient(135deg, rgba(255, 105, 180, 0.15), rgba(255, 20, 147, 0.2));
+  color: #ff69b4;
+  border: 1px solid rgba(255, 105, 180, 0.4);
 }
 
-.sidebar-support-bmc:hover {
-  background: linear-gradient(135deg, rgba(255, 221, 0, 0.25), rgba(255, 129, 63, 0.3));
+.sidebar-support-donate:hover {
+  background: linear-gradient(135deg, rgba(255, 105, 180, 0.25), rgba(255, 20, 147, 0.3));
   color: #fff;
-  border: 1px solid rgba(255, 221, 0, 0.6);
-  box-shadow: 0 4px 12px rgba(255, 129, 63, 0.3);
+  border: 1px solid rgba(255, 105, 180, 0.6);
+  box-shadow: 0 4px 12px rgba(255, 105, 180, 0.3);
 }
 
 /* Setup / Login support row */

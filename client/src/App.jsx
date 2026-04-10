@@ -9,7 +9,8 @@ import { ConfigDropdown } from './components/config/ConfigDropdown';
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAppController } from './hooks/useAppController';
 import { api } from './services/api';
-import { Download, Settings, Loader, Coffee } from 'lucide-react';
+import { Download, Settings, Loader, Coffee, Heart } from 'lucide-react';
+import { DonateModal } from './components/modals/DonateModal';
 import { FilterPanelSkeleton, CatalogListSkeleton } from './components/layout/Skeleton';
 import { PanelErrorBoundary } from './components/layout/PanelErrorBoundary';
 import { CreditsBanner } from './components/layout/CreditsBanner';
@@ -51,6 +52,7 @@ function App() {
   } = state;
 
   const [stats, setStats] = useState(null);
+  const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
 
   useEffect(() => {
     let stale = false;
@@ -215,16 +217,14 @@ function App() {
                   <DiscordIcon className="sidebar-support-icon" />
                   <span>Discord</span>
                 </a>
-                <a
-                  href="https://buymeacoffee.com/semi.column"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="sidebar-support-btn sidebar-support-bmc"
-                  title="Buy me a coffee"
+                <button
+                  onClick={() => setIsDonateModalOpen(true)}
+                  className="sidebar-support-btn sidebar-support-donate"
+                  title="Donate"
                 >
-                  <Coffee size={14} />
-                  <span>Buy me a coffee</span>
-                </a>
+                  <Heart size={14} />
+                  <span>Donate</span>
+                </button>
               </div>
             </div>
 
@@ -267,6 +267,8 @@ function App() {
           onGoToOwn={actions.handleConfigMismatchGoToOwn}
           onLoginNew={actions.handleConfigMismatchLoginNew}
         />
+
+        <DonateModal isOpen={isDonateModalOpen} onClose={() => setIsDonateModalOpen(false)} />
 
         <ToastContainer toasts={toasts} removeToast={actions.removeToast} />
       </AppProviders>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Key, Loader, ArrowRight, ExternalLink, Eye, EyeOff, Coffee } from 'lucide-react';
+import { Key, Loader, ArrowRight, ExternalLink, Eye, EyeOff, Coffee, Heart } from 'lucide-react';
 import { DiscordIcon } from '../social/DiscordButton.jsx';
+import { DonateModal } from '../modals/DonateModal';
 import { api } from '../../services/api';
 
 export function ApiKeySetup({ onLogin, isSessionExpired = false, returnUserId = null }) {
@@ -9,6 +10,7 @@ export function ApiKeySetup({ onLogin, isSessionExpired = false, returnUserId = 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
+  const [isDonateOpen, setIsDonateOpen] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -127,19 +129,19 @@ export function ApiKeySetup({ onLogin, isSessionExpired = false, returnUserId = 
               <DiscordIcon className="sidebar-support-icon" />
               <span>Discord</span>
             </a>
-            <a
-              href="https://buymeacoffee.com/semi.column"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="sidebar-support-btn sidebar-support-bmc"
-              title="Buy me a coffee"
+            <button
+              type="button"
+              onClick={() => setIsDonateOpen(true)}
+              className="sidebar-support-btn sidebar-support-donate"
+              title="Donate"
             >
-              <Coffee size={14} />
-              <span>Buy me a coffee</span>
-            </a>
+              <Heart size={14} />
+              <span>Donate</span>
+            </button>
           </div>
         </form>
       </div>
+      <DonateModal isOpen={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
     </div>
   );
 }

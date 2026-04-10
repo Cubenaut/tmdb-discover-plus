@@ -205,10 +205,12 @@ export function useCatalogEditor() {
     getWatchProviders,
   });
 
-  const mergedLocalCatalog = useMemo(
-    () => ({
+  const mergedLocalCatalog = useMemo(() => {
+    const presetDefaults = localCatalog.filters?.presetDefaults || {};
+    return {
       ...localCatalog,
       filters: {
+        ...presetDefaults,
         ...localCatalog.filters,
         withPeople: selectedPeople.map((p) => p.id).join(',') || undefined,
         withCompanies: selectedCompanies.map((c) => c.id).join(',') || undefined,
@@ -239,22 +241,21 @@ export function useCatalogEditor() {
         selectedCity: selectedCity || undefined,
         expandedSections,
       },
-    }),
-    [
-      localCatalog,
-      selectedPeople,
-      selectedCompanies,
-      selectedKeywords,
-      excludeKeywords,
-      excludeCompanies,
-      selectedNetworks,
-      selectedImdbPeople,
-      selectedImdbCompanies,
-      selectedImdbExcludeCompanies,
-      selectedCity,
-      expandedSections,
-    ]
-  );
+    };
+  }, [
+    localCatalog,
+    selectedPeople,
+    selectedCompanies,
+    selectedKeywords,
+    excludeKeywords,
+    excludeCompanies,
+    selectedNetworks,
+    selectedImdbPeople,
+    selectedImdbCompanies,
+    selectedImdbExcludeCompanies,
+    selectedCity,
+    expandedSections,
+  ]);
 
   useCatalogSync({ localCatalog: mergedLocalCatalog, catalog, onUpdate });
 

@@ -80,7 +80,7 @@ export async function discover(apiKey: string, options: DiscoverOptions = {}): P
     'vote_count.gte': voteCountMin,
   };
 
-  if (mediaType === 'movie' && includeVideo) params.include_video = true;
+  if (mediaType === 'movie') params.include_video = includeVideo === true;
 
   if (genres.length > 0) {
     const separator = genreMatchMode === 'all' ? ',' : '|';
@@ -91,7 +91,8 @@ export async function discover(apiKey: string, options: DiscoverOptions = {}): P
     params.without_genres = excludeGenres.join('|');
   }
   if (mediaType === 'movie') {
-    const useRegionalRelease = Boolean(region);
+    const hasReleaseTypeFilterEarly = releaseTypes.length > 0 || Boolean(releaseType);
+    const useRegionalRelease = Boolean(region) || hasReleaseTypeFilterEarly;
     const dateKey = useRegionalRelease ? 'release_date' : 'primary_release_date';
     if (yearFrom && !releaseDateFrom) params[`${dateKey}.gte`] = `${yearFrom}-01-01`;
     if (yearTo && !releaseDateTo) params[`${dateKey}.lte`] = `${yearTo}-12-31`;
@@ -123,14 +124,15 @@ export async function discover(apiKey: string, options: DiscoverOptions = {}): P
   if (mediaType === 'movie') {
     if (region) params.region = region;
 
-    const useRegionalRelease = Boolean(region);
+    const hasReleaseTypeFilter = releaseTypes.length > 0 || Boolean(releaseType);
+    const useRegionalRelease = Boolean(region) || hasReleaseTypeFilter;
     const dateKey = useRegionalRelease ? 'release_date' : 'primary_release_date';
     if (releaseDateFrom) params[`${dateKey}.gte`] = releaseDateFrom;
     if (releaseDateTo) params[`${dateKey}.lte`] = releaseDateTo;
 
-    if (region && releaseType) {
+    if (releaseType) {
       params.with_release_type = releaseType;
-    } else if (region && releaseTypes.length > 0) {
+    } else if (releaseTypes.length > 0) {
       params.with_release_type = releaseTypes.join('|');
     }
   }

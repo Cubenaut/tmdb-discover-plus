@@ -34,11 +34,14 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
+const IGNORED_KEYS = new Set(['presetOrigin', 'presetDefaults', 'datePreset']);
+
 export function getActiveFilterCount(filters: CatalogFilters | undefined | null): number {
   if (!filters || typeof filters !== 'object') return 0;
 
   let count = 0;
   for (const [key, value] of Object.entries(filters)) {
+    if (IGNORED_KEYS.has(key)) continue;
     if (BASE_KEYS.has(key) && isDefaultValue(key, value)) continue;
     if (hasValue(value)) count++;
   }

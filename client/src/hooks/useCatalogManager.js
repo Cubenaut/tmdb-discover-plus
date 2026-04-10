@@ -1,4 +1,49 @@
 import { useState } from 'react';
+import { PRESET_DATE_MAP } from '../constants/datePresets';
+
+const TMDB_PRESET_DISCOVER_DEFAULTS = {
+  movie: {
+    now_playing: {
+      sortBy: 'popularity.desc',
+      releaseTypes: ['2', '3'],
+      datePreset: 'last_30_days',
+    },
+    upcoming: { sortBy: 'popularity.desc', releaseTypes: ['2', '3'], datePreset: 'next_30_days' },
+    top_rated: { sortBy: 'vote_average.desc', excludeGenres: [99], voteCountMin: 200 },
+    popular: { sortBy: 'popularity.desc' },
+  },
+  series: {
+    airing_today: { sortBy: 'popularity.desc', datePreset: 'today' },
+    on_the_air: { sortBy: 'popularity.desc', datePreset: 'next_7_days' },
+    top_rated: { sortBy: 'vote_average.desc', voteCountMin: 200 },
+    popular: { sortBy: 'popularity.desc' },
+  },
+};
+
+function resolvePresetDateFields(filters, type) {
+  if (!filters.datePreset) return filters;
+  const dates = PRESET_DATE_MAP[filters.datePreset];
+  if (!dates) return filters;
+  const isMovie = type === 'movie';
+  const fromKey = isMovie ? 'releaseDateFrom' : 'airDateFrom';
+  const toKey = isMovie ? 'releaseDateTo' : 'airDateTo';
+  return { ...filters, [fromKey]: dates.from, [toKey]: dates.to };
+}
+
+function buildPresetFilters(type, presetValue) {
+  const defaults = TMDB_PRESET_DISCOVER_DEFAULTS[type]?.[presetValue];
+  if (!defaults) return { listType: presetValue };
+
+  const discoverDefaults = resolvePresetDateFields({ ...defaults }, type);
+  return { listType: presetValue, presetOrigin: presetValue, presetDefaults: discoverDefaults };
+}
+
+export function promotePresetToDiscover(filters) {
+  if (!filters?.presetOrigin || filters.listType === 'discover') return filters;
+  const defaults = filters.presetDefaults || {};
+  const { presetDefaults: _presetDefaults, ...rest } = filters;
+  return { ...defaults, ...rest, listType: 'discover' };
+}
 
 export function useCatalogManager(config, addToast) {
   const [activeCatalog, setActiveCatalogState] = useState(null);
@@ -6,7 +51,6 @@ export function useCatalogManager(config, addToast) {
 
   const setActiveCatalog = (catalog) => {
     setActiveCatalogState(catalog);
-    // Always sync the theme — TMDB catalogs have no source field, so default to 'tmdb'
     setGlobalSource(catalog?.source || 'tmdb');
   };
 
@@ -18,11 +62,12 @@ export function useCatalogManager(config, addToast) {
 
   const handleAddPresetCatalog = (type, preset, source) => {
     const effectiveSource = source || globalSource;
+    const isTmdb = effectiveSource !== 'imdb';
     const newCatalog = {
       _id: crypto.randomUUID(),
       name: preset.label.replace(/^[^\s]+\s/, ''),
       type,
-      filters: { listType: preset.value },
+      filters: isTmdb ? buildPresetFilters(type, preset.value) : { listType: preset.value },
       enabled: true,
     };
     if (effectiveSource === 'imdb') {

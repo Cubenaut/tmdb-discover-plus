@@ -433,7 +433,8 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
                       (source === 'imdb'
                         ? c.source === 'imdb'
                         : !c.source || c.source === 'tmdb') &&
-                      c.filters?.listType === preset.value &&
+                      (c.filters?.listType === preset.value ||
+                        c.filters?.presetOrigin === preset.value) &&
                       c.type === type
                   );
                   const IconComponent =
@@ -487,7 +488,8 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
                       (source === 'imdb'
                         ? c.source === 'imdb'
                         : !c.source || c.source === 'tmdb') &&
-                      c.filters?.listType === preset.value &&
+                      (c.filters?.listType === preset.value ||
+                        c.filters?.presetOrigin === preset.value) &&
                       c.type === type
                   );
                   const IconComponent =

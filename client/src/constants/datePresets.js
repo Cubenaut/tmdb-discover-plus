@@ -1,4 +1,6 @@
 export const DATE_PRESETS = [
+  { label: 'Today', value: 'today', group: 'live' },
+  { label: 'Next 7 days', value: 'next_7_days', group: 'live' },
   { label: 'Last 30 days', value: 'last_30_days', group: 'last' },
   { label: 'Last 90 days', value: 'last_90_days', group: 'last' },
   { label: 'Last 6 months', value: 'last_180_days', group: 'last' },
@@ -13,6 +15,8 @@ export const DATE_PRESETS = [
 ];
 
 export const PRESET_DATE_MAP = {
+  today: { from: 'today', to: 'today' },
+  next_7_days: { from: 'today', to: 'today+7d' },
   last_30_days: { from: 'today-30d', to: 'today' },
   last_90_days: { from: 'today-90d', to: 'today' },
   last_180_days: { from: 'today-6mo', to: 'today' },

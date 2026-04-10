@@ -142,7 +142,8 @@ export const CatalogEditor = memo(function CatalogEditor() {
   const catalogType = localCatalog?.type || 'movie';
   const isMovie = catalogType === 'movie';
   const currentListType = localCatalog?.filters?.listType || 'discover';
-  const isPresetCatalog = currentListType && currentListType !== 'discover';
+  const hasPresetOrigin = Boolean(localCatalog?.filters?.presetOrigin);
+  const isPresetCatalog = currentListType && currentListType !== 'discover' && !hasPresetOrigin;
   const supportsFullFilters = !isPresetCatalog;
   const isImdbCatalog = localCatalog?.source === 'imdb';
 

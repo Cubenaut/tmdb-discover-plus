@@ -119,6 +119,8 @@ export function sanitizeFilters(filters: unknown): Record<string, unknown> {
     'stremioExtras',
     'stremioExtraMode',
     'cacheTTL',
+    'presetOrigin',
+    'presetDefaults',
   ];
 
   for (const key of allowedKeys) {

@@ -39,6 +39,18 @@ export function resolveDynamicDatePreset(
   const toField = isMovie ? 'releaseDateTo' : 'airDateTo';
 
   switch (filters.datePreset) {
+    case 'today': {
+      resolved[fromField] = formatDate(today);
+      resolved[toField] = formatDate(today);
+      break;
+    }
+    case 'next_7_days': {
+      const sevenDaysLater = new Date(today);
+      sevenDaysLater.setDate(today.getDate() + 7);
+      resolved[fromField] = formatDate(today);
+      resolved[toField] = formatDate(sevenDaysLater);
+      break;
+    }
     case 'last_30_days': {
       const thirtyDaysAgo = new Date(today);
       thirtyDaysAgo.setDate(today.getDate() - 30);

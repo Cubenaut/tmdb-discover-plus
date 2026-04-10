@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { DEFAULT_CATALOG } from './catalogEditor.constants';
 import { getSource } from '../sources/index';
+import { promotePresetToDiscover } from './useCatalogManager';
 
 function stripOppositeTypeFilters(filters, targetType, sourceId) {
   const source = getSource(sourceId ?? 'tmdb');
@@ -69,7 +70,12 @@ export function useCatalogEditorHandlers({
     (key, value) => {
       setLocalCatalog((prev) => {
         const current = prev || DEFAULT_CATALOG;
-        return { ...current, filters: { ...current.filters, [key]: value } };
+        const filters = current.filters || {};
+        let updatedFilters = { ...filters, [key]: value };
+        if (filters.presetOrigin && filters.listType !== 'discover') {
+          updatedFilters = { ...promotePresetToDiscover(filters), [key]: value };
+        }
+        return { ...current, filters: updatedFilters };
       });
     },
     [setLocalCatalog]

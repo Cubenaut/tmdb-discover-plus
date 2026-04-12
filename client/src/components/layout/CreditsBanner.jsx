@@ -1,6 +1,5 @@
-/* global process */
-export function CreditsBanner() {
-  if (process.env.NODE_ENV !== 'production') return null;
+export function CreditsBanner({ addonVariant = null }) {
+  if (addonVariant === null || addonVariant === 'nightly') return null;
 
   return (
     <div className="credits-banner">

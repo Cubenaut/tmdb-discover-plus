@@ -169,7 +169,7 @@ function App() {
                 )}
               </div>
 
-              <CreditsBanner />
+              <CreditsBanner addonVariant={stats?.addonVariant ?? null} />
 
               <div className="actions-toolbar">
                 {userConfigs.length > 0 && (

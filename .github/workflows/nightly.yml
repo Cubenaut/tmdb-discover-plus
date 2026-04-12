@@ -107,7 +107,7 @@ jobs:
 
           ⚠️ **Warning:** This is a development build intended for testing. Use at your own risk.
 
-          🔗 **Test URL:** https://84f50d1c22e7-tmdb-discover-plus.baby-beamup.club/
+          🔗 **Test URL:** https://tmdb-discover-plus.duckdns.org/
 
           📦 **Stable Version:** For production use, please use the latest stable release.
           EOF
@@ -163,18 +163,42 @@ jobs:
       - name: Build client
         run: cd client && npm run build
 
-      - name: Configure Git for deploy
+      - name: Setup SSH for Oracle VM deploy
         run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORACLE_VM_SSH_KEY }}" > ~/.ssh/oracle_vm_key
+          chmod 600 ~/.ssh/oracle_vm_key
+          ssh-keyscan -H "${{ secrets.ORACLE_VM_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Add built files to deploy commit
+      - name: Deploy to Oracle VM
+        env:
+          ORACLE_VM_HOST: ${{ secrets.ORACLE_VM_HOST }}
+          ORACLE_VM_USER: ${{ secrets.ORACLE_VM_USER }}
         run: |
-          git add -f client/dist/
-          git add -f server/src/metadata.json
-          git commit -m "Nightly build ${{ steps.gen_tag.outputs.tag_name }} [skip ci]" --allow-empty
+          ssh -i ~/.ssh/oracle_vm_key -o StrictHostKeyChecking=yes "$ORACLE_VM_USER@$ORACLE_VM_HOST" << 'EOF'
+          set -euo pipefail
+
+          cd ~/tmdb-discover-plus
+          git fetch origin main
+          git reset --hard origin/main
+
+          cd server
+          npm ci --omit=dev
+
+          cd ../client
+          npm ci
+          npm run build
+          cp -r public/* dist/ 2>/dev/null || true
+
+          cd ..
+          sudo systemctl restart tmdb-nightly
+          sleep 3
+          curl -fsS http://localhost:7000/health > /dev/null
+          echo "Nightly deploy completed on Oracle VM"
+          EOF
 
       - name: Setup SSH for BeamUp
+        if: ${{ false }}
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.BEAMUP_SSH_KEY }}" > ~/.ssh/beamup_key
@@ -182,6 +206,7 @@ jobs:
           ssh-keyscan -H a.baby-beamup.club >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Deploy to BeamUp
+        if: ${{ false }}
         env:
           GIT_SSH_COMMAND: 'ssh -i ~/.ssh/beamup_key -o StrictHostKeyChecking=no'
         run: |
@@ -195,7 +220,7 @@ jobs:
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Tag** | \`${{ steps.gen_tag.outputs.tag_name }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **URL** | https://84f50d1c22e7-tmdb-discover-plus.baby-beamup.club/ |" >> $GITHUB_STEP_SUMMARY
+          echo "| **URL** | https://tmdb-discover-plus.duckdns.org/ |" >> $GITHUB_STEP_SUMMARY
           echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Deployed at** | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

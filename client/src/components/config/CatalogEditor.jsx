@@ -150,10 +150,22 @@ export const CatalogEditor = memo(function CatalogEditor() {
   const showImdbSourceDisabledNotice = isImdbCatalog && !imdbEnabled;
 
   const imdbSourceDisabledNotice = (
-    <div className="imdb-quota-notice" role="alert" aria-live="polite">
-      <AlertTriangle size={16} aria-hidden="true" />
-      <span>
-        IMDb source is disabled on nightly due to resource constraints. Please use{' '}
+    <div className="empty-state">
+      <div
+        className="empty-state-icon"
+        style={{
+          color: 'var(--accent-primary)',
+          opacity: 0.8,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-color)',
+        }}
+      >
+        <AlertTriangle size={48} />
+      </div>
+      <h3>IMDb Source Unavailable</h3>
+      <p style={{ maxWidth: '400px', margin: '0 auto', lineHeight: '1.5' }}>
+        IMDb catalogs are disabled on the nightly build due to resource constraints. Please switch
+        to the{' '}
         <a
           href="https://tmdb-discover-plus.elfhosted.com/"
           style={{
@@ -164,19 +176,17 @@ export const CatalogEditor = memo(function CatalogEditor() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          stable
+          stable version
         </a>{' '}
-        to continue using IMDb source catalogs.
-      </span>
+        to manage and edit IMDb catalogs.
+      </p>
     </div>
   );
 
   if (showImdbSourceDisabledNotice) {
     return (
       <div className="editor-container">
-        <div className="editor-panel">
-          <div className="editor-content">{imdbSourceDisabledNotice}</div>
-        </div>
+        <div className="editor-panel">{imdbSourceDisabledNotice}</div>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-import { Eye, Film, Loader, Sparkles, Tv } from 'lucide-react';
+import { AlertTriangle, Eye, Film, Loader, Sparkles, Tv } from 'lucide-react';
 import { memo, Suspense } from 'react';
 import { ActiveFiltersBar } from './catalog/ActiveFiltersBar';
 import { CatalogPreview } from './catalog/CatalogPreview';
@@ -48,6 +48,7 @@ export const CatalogEditor = memo(function CatalogEditor() {
     imdbAwards,
     imdbSortOptions,
     imdbTitleTypes,
+    imdbEnabled,
     imdbCertificateRatings,
     imdbRankedLists,
     imdbWithDataOptions,
@@ -146,6 +147,7 @@ export const CatalogEditor = memo(function CatalogEditor() {
   const isPresetCatalog = currentListType && currentListType !== 'discover' && !hasPresetOrigin;
   const supportsFullFilters = !isPresetCatalog;
   const isImdbCatalog = localCatalog?.source === 'imdb';
+  const showImdbSourceDisabledNotice = isImdbCatalog && !imdbEnabled;
 
   const catalogSource = getSource(localCatalog?.source ?? 'tmdb');
   const SourceFilterPanel = catalogSource.FilterPanelComponent;
@@ -345,6 +347,28 @@ export const CatalogEditor = memo(function CatalogEditor() {
               <Tv size={18} /> TV Shows
             </button>
           </div>
+
+          {showImdbSourceDisabledNotice && (
+            <div className="imdb-quota-notice" role="alert" aria-live="polite">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>
+                IMDb source is disabled on nightly due to resource constraints. Please use{' '}
+                <a
+                  href="https://tmdb-discover-plus.elfhosted.com/"
+                  style={{
+                    color: 'var(--accent-primary)',
+                    fontWeight: 600,
+                    textDecoration: 'none',
+                  }}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  stable
+                </a>{' '}
+                to continue using IMDb source catalogs.
+              </span>
+            </div>
+          )}
 
           {!(isImdbCatalog && isPresetCatalog) && (
             <ActiveFiltersBar

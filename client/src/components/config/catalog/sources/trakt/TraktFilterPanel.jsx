@@ -1,9 +1,20 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { Sparkles, Star, Shield, Settings, Key, Loader, AlertCircle, Tv } from 'lucide-react';
+import {
+  Sparkles,
+  Star,
+  Shield,
+  Settings,
+  Key,
+  Loader,
+  AlertCircle,
+  Tv,
+  Layers,
+} from 'lucide-react';
 import { FilterSection } from '../../FilterSection';
 import { SearchableSelect } from '../../../../forms/SearchableSelect';
 import { MultiSelect } from '../../../../forms/MultiSelect';
 import { LabelWithTooltip } from '../../../../forms/Tooltip';
+import { StremioExtras } from '../../StremioExtras';
 import { AnimeFormatSelector } from '../../shared/AnimeFormatSelector';
 import { RangeSlider } from '../../../../forms/RangeSlider';
 import { Checkbox } from '../../../../forms/Checkbox';
@@ -1387,6 +1398,22 @@ export function TraktFilterPanel({
             Update Trakt Client ID
           </button>
         </div>
+      </FilterSection>
+
+      <FilterSection
+        id="extras"
+        title="Stremio Extras"
+        description="Expose filter dropdowns inside Stremio"
+        icon={Layers}
+        isOpen={expandedSections?.extras}
+        onToggle={onToggleSection}
+        badgeCount={(filters.stremioExtras || []).length}
+      >
+        <StremioExtras
+          localCatalog={localCatalog}
+          onFiltersChange={onFiltersChange}
+          availableModes={['genre']}
+        />
       </FilterSection>
     </>
   );

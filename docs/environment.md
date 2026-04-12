@@ -95,6 +95,21 @@ Storage backend selection priority: explicit `DATABASE_DRIVER` → auto-detect f
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | `ADDON_VARIANT` | Changes addon ID and display name. Set to `nightly` to produce ID `community.tmdb.discover.plus.nightly` and name "TMDB Discover+ (Nightly)". | _(stable)_ |
 
+## Nightly Resource Profile
+
+When `ADDON_VARIANT=nightly`, runtime applies a constrained profile for memory-only deployments:
+
+| Setting / Behavior           | Stable Default   | Nightly Effective      |
+| ---------------------------- | ---------------- | ---------------------- |
+| `TMDB_RATE_LIMIT` default    | `35`             | `12`                   |
+| `CACHE_MAX_KEYS` default     | `20000`          | `6000`                 |
+| `CACHE_WARM_REGIONS` default | `US,GB,DE,FR,ES` | `US`                   |
+| IMDb API (`imdbApi.enabled`) | env-driven       | forced `false`         |
+| IMDb Ratings updater         | env-driven       | unchanged (env-driven) |
+| Startup cache warming        | enabled          | skipped                |
+
+Explicit env values still override the default numeric/cache settings. In nightly, only IMDb source/API is force-disabled.
+
 ## Deployment Examples
 
 ### Docker Compose (recommended)

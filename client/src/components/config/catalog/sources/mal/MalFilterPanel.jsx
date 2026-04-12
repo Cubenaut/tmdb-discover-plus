@@ -4,6 +4,7 @@ import { FilterSection } from '../../FilterSection';
 import { GenreSelector } from '../../GenreSelector';
 import { AnimeSeasonSelector } from '../../shared/AnimeSeasonSelector';
 import { AnimeFormatSelector } from '../../shared/AnimeFormatSelector';
+import { StremioExtras } from '../../StremioExtras';
 import { SearchableSelect } from '../../../../forms/SearchableSelect';
 import { RangeSlider } from '../../../../forms/RangeSlider';
 import { LabelWithTooltip } from '../../../../forms/Tooltip';
@@ -367,6 +368,22 @@ export function MalFilterPanel({
             tooltip="Fetch a random page from matching results and shuffle them."
           />
         </div>
+      </FilterSection>
+
+      <FilterSection
+        id="extras"
+        title="Stremio Extras"
+        description="Expose filter dropdowns inside Stremio"
+        icon={Layers}
+        isOpen={expandedSections?.extras}
+        onToggle={onToggleSection}
+        badgeCount={(filters.stremioExtras || []).length}
+      >
+        <StremioExtras
+          localCatalog={localCatalog}
+          onFiltersChange={onFiltersChange}
+          availableModes={['genre']}
+        />
       </FilterSection>
     </>
   );

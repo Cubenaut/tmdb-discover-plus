@@ -479,15 +479,20 @@ async function start() {
       log.info(`Health check at http://localhost:${PORT}/health`);
     });
 
-    const defaultApiKey = config.tmdb.apiKey;
-    warmEssentialCaches(defaultApiKey)
-      .then((result) => {
-        serverStatus.cacheWarming = result;
-        log.info('Background cache warming finished', result);
-      })
-      .catch((err) => {
-        log.warn('Background cache warming failed (non-critical)', { error: err.message });
-      });
+    if (config.addon.isNightly) {
+      serverStatus.cacheWarming = { warmed: 0, failed: 0, skipped: true };
+      log.info('Skipping startup cache warming for nightly profile');
+    } else {
+      const defaultApiKey = config.tmdb.apiKey;
+      warmEssentialCaches(defaultApiKey)
+        .then((result) => {
+          serverStatus.cacheWarming = result;
+          log.info('Background cache warming finished', result);
+        })
+        .catch((err) => {
+          log.warn('Background cache warming failed (non-critical)', { error: err.message });
+        });
+    }
 
     initImdbRatings()
       .then(() => {

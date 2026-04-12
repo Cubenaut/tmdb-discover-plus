@@ -18,6 +18,19 @@ const log = createLogger('addon:trakt');
 const PAGE_SIZE = 20;
 const MAX_BACKFILL_PAGES = 5;
 
+function resolveTraktGenreSlug(
+  genreValue: string,
+  genresByType: { movie: trakt.TraktGenre[]; series: trakt.TraktGenre[] },
+  type: ContentType
+): string | null {
+  const normalized = genreValue.trim().toLowerCase();
+  const scopedGenres = type === 'movie' ? genresByType.movie : genresByType.series;
+  const match = scopedGenres.find(
+    (genre) => genre.slug.toLowerCase() === normalized || genre.name.toLowerCase() === normalized
+  );
+  return match?.slug || null;
+}
+
 function filterExcludedGenres(
   items: (trakt.TraktMovie | trakt.TraktShow)[],
   excludeGenres?: string[]
@@ -126,9 +139,27 @@ export async function handleTraktCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
-    const listType = filters.traktListType || 'calendar';
-    const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
-    const excludeGenres = filters.traktExcludeGenres as string[] | undefined;
+    const selectedExtraGenre =
+      typeof extra.genre === 'string' && extra.genre !== 'All' ? extra.genre : null;
+    const effectiveFilters = { ...filters };
+
+    if (selectedExtraGenre) {
+      const traktGenres = await trakt.getGenresByType(traktClientId);
+      const slug = resolveTraktGenreSlug(selectedExtraGenre, traktGenres, type);
+      if (slug) {
+        effectiveFilters.traktGenres = [slug];
+        if (Array.isArray(effectiveFilters.traktExcludeGenres)) {
+          const nextExclude = effectiveFilters.traktExcludeGenres.filter(
+            (genre: unknown) => String(genre) !== slug
+          );
+          effectiveFilters.traktExcludeGenres = nextExclude.length > 0 ? nextExclude : undefined;
+        }
+      }
+    }
+
+    const listType = effectiveFilters.traktListType || 'calendar';
+    const randomize = Boolean(effectiveFilters.randomize || effectiveFilters.sortBy === 'random');
+    const excludeGenres = effectiveFilters.traktExcludeGenres as string[] | undefined;
 
     if (!traktClientId) {
       log.warn('Trakt Client ID not configured', { userId, listType });
@@ -137,7 +168,7 @@ export async function handleTraktCatalogRequest(
     }
 
     const cache = getCache();
-    const cacheKey = `trakt:catalog:${catalogId}:${type}:${page}`;
+    const cacheKey = `trakt:catalog:${catalogId}:${type}:${page}:${selectedExtraGenre || ''}`;
 
     if (!randomize) {
       const cached = await cache.get(cacheKey);
@@ -157,7 +188,7 @@ export async function handleTraktCatalogRequest(
 
     let metas: StremioMetaPreview[];
     if (randomize) {
-      const probe = await trakt.discover(filters, type, 1, traktClientId);
+      const probe = await trakt.discover(effectiveFilters, type, 1, traktClientId);
       const filteredItems = filterExcludedGenres(probe.items, excludeGenres);
       if (listType === 'boxoffice' || listType === 'calendar' || listType === 'recently_aired') {
         metas = trakt.batchConvertToStremioMeta(filteredItems, type, posterOptions);
@@ -166,7 +197,7 @@ export async function handleTraktCatalogRequest(
         const maxPage = probe.hasMore ? 5 : 1;
         const randomPage = Math.floor(Math.random() * maxPage) + 1;
         metas = await fetchWithBackfill(
-          (p) => trakt.discover(filters, type, p, traktClientId),
+          (p) => trakt.discover(effectiveFilters, type, p, traktClientId),
           type,
           randomPage,
           excludeGenres,
@@ -176,7 +207,7 @@ export async function handleTraktCatalogRequest(
       }
     } else {
       metas = await fetchWithBackfill(
-        (p) => trakt.discover(filters, type, p, traktClientId),
+        (p) => trakt.discover(effectiveFilters, type, p, traktClientId),
         type,
         page,
         excludeGenres,

@@ -13,6 +13,24 @@ const log = createLogger('addon:simkl');
 const PAGE_SIZE = 20;
 const MAX_BACKFILL_PAGES = 5;
 
+function normalizeGenreName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function filterByExtraGenre(
+  items: (simkl.SimklAnime | simkl.SimklTrendingItem)[],
+  genreName?: string | null
+): (simkl.SimklAnime | simkl.SimklTrendingItem)[] {
+  if (!genreName) return items;
+  const normalizedTarget = normalizeGenreName(genreName);
+
+  return items.filter((item) => {
+    const rawGenres = (item as { genres?: unknown }).genres;
+    const genres = Array.isArray(rawGenres) ? rawGenres : [];
+    return genres.some((genre: unknown) => normalizeGenreName(String(genre)) === normalizedTarget);
+  });
+}
+
 /**
  * Fetches enough upstream pages to fill PAGE_SIZE mapped metas.
  */
@@ -21,7 +39,8 @@ async function fetchWithBackfill(
     page: number
   ) => Promise<{ items: (simkl.SimklAnime | simkl.SimklTrendingItem)[]; hasMore: boolean }>,
   type: ContentType,
-  startPage: number
+  startPage: number,
+  genreName?: string | null
 ): Promise<StremioMetaPreview[]> {
   const metas: StremioMetaPreview[] = [];
   let currentPage = startPage;
@@ -29,7 +48,8 @@ async function fetchWithBackfill(
 
   while (metas.length < PAGE_SIZE && pagesChecked < MAX_BACKFILL_PAGES) {
     const result = await fetchPage(currentPage);
-    const batch = simkl.batchConvertToStremioMeta(result.items, type);
+    const filteredItems = filterByExtraGenre(result.items, genreName);
+    const batch = simkl.batchConvertToStremioMeta(filteredItems, type);
     metas.push(...batch);
     pagesChecked++;
 
@@ -103,6 +123,8 @@ export async function handleSimklCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
+    const selectedExtraGenre =
+      typeof extra.genre === 'string' && extra.genre !== 'All' ? extra.genre : null;
     const listType = filters.simklListType || 'trending';
     const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
 
@@ -117,7 +139,7 @@ export async function handleSimklCatalogRequest(
     }
 
     const cache = getCache();
-    const cacheKey = `simkl:catalog:${catalogId}:${type}:${page}`;
+    const cacheKey = `simkl:catalog:${catalogId}:${type}:${page}:${selectedExtraGenre || ''}`;
 
     if (!randomize) {
       const cached = await cache.get(cacheKey);
@@ -138,8 +160,9 @@ export async function handleSimklCatalogRequest(
     let metas: StremioMetaPreview[];
     if (randomize) {
       const probe = await simkl.discover(filters, type, 1, simklApiKey);
+      const probeFiltered = filterByExtraGenre(probe.items, selectedExtraGenre);
       if (listType === 'trending' || listType === 'airing') {
-        metas = simkl.batchConvertToStremioMeta(probe.items, type);
+        metas = simkl.batchConvertToStremioMeta(probeFiltered, type);
         metas = shuffleArray(metas).slice(0, PAGE_SIZE);
       } else {
         const maxPage = probe.hasMore ? 5 : 1;
@@ -147,7 +170,8 @@ export async function handleSimklCatalogRequest(
         metas = await fetchWithBackfill(
           (p) => simkl.discover(filters, type, p, simklApiKey),
           type,
-          randomPage
+          randomPage,
+          selectedExtraGenre
         );
         metas = shuffleArray(metas);
       }
@@ -155,7 +179,8 @@ export async function handleSimklCatalogRequest(
       metas = await fetchWithBackfill(
         (p) => simkl.discover(filters, type, p, simklApiKey),
         type,
-        page
+        page,
+        selectedExtraGenre
       );
     }
 

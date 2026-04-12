@@ -7,6 +7,7 @@ import {
   Calendar,
   Award,
   Tag,
+  Layers,
   Globe,
   Users,
   MapPin,
@@ -22,6 +23,7 @@ import { SearchableSelect } from '../../forms/SearchableSelect';
 import { SearchInput } from '../../forms/SearchInput';
 import { RangeSlider, SingleSlider } from '../../forms/RangeSlider';
 import { LabelWithTooltip } from '../../forms/Tooltip';
+import { StremioExtras } from './StremioExtras';
 
 const MAX_RANK_HIDDEN = false;
 
@@ -68,6 +70,7 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
     rankedLists: false,
     textSearch: false,
     advanced: false,
+    extras: false,
   });
 
   const [keywordInput, setKeywordInput] = useState('');
@@ -1298,6 +1301,22 @@ export const ImdbFilterPanel = memo(function ImdbFilterPanel({
           </div>
         </FilterSection>
       )}
+
+      <FilterSection
+        id="extras"
+        title="Stremio Extras"
+        description="Expose filter dropdowns inside Stremio"
+        icon={Layers}
+        isOpen={localExpandedSections.extras}
+        onToggle={toggleSection}
+        badgeCount={(filters.stremioExtras || []).length}
+      >
+        <StremioExtras
+          localCatalog={localCatalog}
+          onFiltersChange={onFiltersChange}
+          availableModes={['genre']}
+        />
+      </FilterSection>
     </>
   );
 });

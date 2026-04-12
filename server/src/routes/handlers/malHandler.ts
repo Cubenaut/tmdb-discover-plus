@@ -100,9 +100,28 @@ export async function handleMalCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
-    const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
+    const selectedExtraGenre =
+      typeof extra.genre === 'string' && extra.genre !== 'All' ? extra.genre : null;
+    const effectiveFilters = { ...filters };
+
+    if (selectedExtraGenre) {
+      const match = mal
+        .getGenres()
+        .find((genre) => genre.name.toLowerCase() === selectedExtraGenre.toLowerCase());
+      if (match) {
+        effectiveFilters.malGenres = [match.id];
+        if (Array.isArray(effectiveFilters.malExcludeGenres)) {
+          const nextExclude = effectiveFilters.malExcludeGenres.filter(
+            (id: unknown) => Number(id) !== match.id
+          );
+          effectiveFilters.malExcludeGenres = nextExclude.length > 0 ? nextExclude : undefined;
+        }
+      }
+    }
+
+    const randomize = Boolean(effectiveFilters.randomize || effectiveFilters.sortBy === 'random');
     const cache = getCache();
-    const cacheKey = `mal:catalog:${catalogId}:${type}:${page}`;
+    const cacheKey = `mal:catalog:${catalogId}:${type}:${page}:${selectedExtraGenre || ''}`;
 
     if (!randomize) {
       const cached = await cache.get(cacheKey);
@@ -122,13 +141,17 @@ export async function handleMalCatalogRequest(
 
     let metas: StremioMetaPreview[];
     if (randomize) {
-      const probe = await mal.discover(filters, type, 1);
+      const probe = await mal.discover(effectiveFilters, type, 1);
       const totalPages = Math.ceil(probe.total / 25) || 1;
       const randomPage = Math.floor(Math.random() * Math.min(totalPages, 20)) + 1;
-      metas = await fetchWithBackfill((p) => mal.discover(filters, type, p), type, randomPage);
+      metas = await fetchWithBackfill(
+        (p) => mal.discover(effectiveFilters, type, p),
+        type,
+        randomPage
+      );
       metas = shuffleArray(metas);
     } else {
-      metas = await fetchWithBackfill((p) => mal.discover(filters, type, p), type, page);
+      metas = await fetchWithBackfill((p) => mal.discover(effectiveFilters, type, p), type, page);
     }
 
     const response = { metas };

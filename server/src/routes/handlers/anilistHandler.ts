@@ -102,9 +102,22 @@ export async function handleAnilistCatalogRequest(
     }
 
     const filters = catalogConfig.filters || {};
-    const randomize = Boolean(filters.randomize || filters.sortBy === 'random');
+    const selectedExtraGenre =
+      typeof extra.genre === 'string' && extra.genre !== 'All' ? extra.genre : null;
+    const effectiveFilters = { ...filters } as Record<string, unknown>;
+
+    if (selectedExtraGenre) {
+      effectiveFilters.genres = [selectedExtraGenre];
+      if (Array.isArray(effectiveFilters.excludeGenres)) {
+        effectiveFilters.excludeGenres = effectiveFilters.excludeGenres.filter(
+          (genre: unknown) => String(genre).toLowerCase() !== selectedExtraGenre.toLowerCase()
+        );
+      }
+    }
+
+    const randomize = Boolean(effectiveFilters.randomize || effectiveFilters.sortBy === 'random');
     const cache = getCache();
-    const cacheKey = `anilist:catalog:${catalogId}:${type}:${page}`;
+    const cacheKey = `anilist:catalog:${catalogId}:${type}:${page}:${selectedExtraGenre || ''}`;
 
     if (!randomize) {
       const cached = await cache.get(cacheKey);
@@ -124,19 +137,29 @@ export async function handleAnilistCatalogRequest(
 
     let metas: StremioMetaPreview[];
     if (randomize) {
-      const probe = await anilist.browse(filters, type, 1);
+      const probe = await anilist.browse(effectiveFilters as any, type, 1);
       const lastPage = Math.ceil(probe.total / 50) || 1;
       const randomPage = Math.floor(Math.random() * Math.min(lastPage, 50)) + 1;
-      metas = await fetchWithBackfill((p) => anilist.browse(filters, type, p), type, randomPage);
+      metas = await fetchWithBackfill(
+        (p) => anilist.browse(effectiveFilters as any, type, p),
+        type,
+        randomPage
+      );
       metas = shuffleArray(metas);
     } else {
-      metas = await fetchWithBackfill((p) => anilist.browse(filters, type, p), type, page);
+      metas = await fetchWithBackfill(
+        (p) => anilist.browse(effectiveFilters as any, type, p),
+        type,
+        page
+      );
     }
 
     const response = { metas };
 
     if (!randomize) {
-      const ttl = catalogServerTtl(filters.sortBy === 'TRENDING_DESC' ? 'trending' : 'discover');
+      const ttl = catalogServerTtl(
+        effectiveFilters.sortBy === 'TRENDING_DESC' ? 'trending' : 'discover'
+      );
       cache.set(cacheKey, response, ttl).catch(() => {});
     }
 

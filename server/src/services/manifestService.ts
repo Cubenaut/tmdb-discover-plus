@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as tmdb from './tmdb/index.ts';
-import { isImdbApiEnabled } from './imdb/index.ts';
+import * as imdb from './imdb/index.ts';
+import * as anilist from './anilist/index.ts';
+import * as mal from './mal/index.ts';
+import * as simkl from './simkl/index.ts';
+import * as trakt from './trakt/index.ts';
 import { getSource } from './sources/registry.ts';
 import { normalizeGenreName, parseIdArray } from '../utils/helpers.ts';
 import { resolveDynamicDatePreset } from '../utils/dateHelpers.ts';
@@ -25,6 +29,9 @@ const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'
 const ADDON_VERSION = pkg.version;
 
 type StremioExtraMode = 'genre' | 'year' | 'sortBy' | 'certification';
+const STREMIO_EXTRA_MODES: StremioExtraMode[] = ['genre', 'year', 'sortBy', 'certification'];
+const TMDB_STREMIO_EXTRA_MODES: StremioExtraMode[] = ['genre', 'year', 'sortBy', 'certification'];
+const GENRE_ONLY_STREMIO_EXTRA_MODES: StremioExtraMode[] = ['genre'];
 
 const MIN_DROPDOWN_YEAR = 1900;
 
@@ -154,28 +161,58 @@ function buildCertificationDropdownOptions(
   return ['All', ...fallbackSelectedOnly];
 }
 
-function getStremioExtraMode(filters: Record<string, unknown> | undefined): StremioExtraMode {
+function getStremioExtraMode(
+  filters: Record<string, unknown> | undefined,
+  supportedModes: StremioExtraMode[] = STREMIO_EXTRA_MODES
+): StremioExtraMode {
+  const firstSupportedMode = supportedModes[0] || 'genre';
   const rawMode = filters?.stremioExtraMode;
   if (
-    rawMode === 'genre' ||
-    rawMode === 'year' ||
-    rawMode === 'sortBy' ||
-    rawMode === 'certification'
+    (rawMode === 'genre' ||
+      rawMode === 'year' ||
+      rawMode === 'sortBy' ||
+      rawMode === 'certification') &&
+    supportedModes.includes(rawMode)
   ) {
     return rawMode;
   }
 
   const legacy = Array.isArray(filters?.stremioExtras) ? filters?.stremioExtras[0] : undefined;
   if (
-    legacy === 'genre' ||
-    legacy === 'year' ||
-    legacy === 'sortBy' ||
-    legacy === 'certification'
+    (legacy === 'genre' ||
+      legacy === 'year' ||
+      legacy === 'sortBy' ||
+      legacy === 'certification') &&
+    supportedModes.includes(legacy)
   ) {
     return legacy;
   }
 
-  return 'genre';
+  return firstSupportedMode;
+}
+
+function upsertGenreExtra(
+  catalog: ManifestCatalog,
+  rawOptions: string[],
+  isRequired: boolean = false
+): void {
+  const options = Array.from(
+    new Set(
+      (rawOptions || [])
+        .map((value) => String(value).trim())
+        .filter((value) => value.length > 0 && value.toLowerCase() !== 'all')
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  if (options.length === 0) return;
+
+  catalog.extra = (catalog.extra || []).filter((extra) => extra.name !== 'genre');
+  catalog.extra.push({
+    name: 'genre',
+    options: ['All', ...options],
+    optionsLimit: 1,
+    isRequired,
+  });
 }
 
 export function buildManifest(userConfig: UserConfig | null, baseUrl: string): StremioManifest {
@@ -215,7 +252,7 @@ export function buildManifest(userConfig: UserConfig | null, baseUrl: string): S
       });
     }
 
-    if (isImdbApiEnabled() && userConfig?.preferences?.disableImdbSearch === false) {
+    if (imdb.isImdbApiEnabled() && userConfig?.preferences?.disableImdbSearch === false) {
       catalogs.push({
         id: 'imdb-search-movie',
         type: 'movie',
@@ -337,19 +374,103 @@ export async function enrichManifestWithGenres(
             const idFromStored = `imdb-${c._id || c.name.toLowerCase().replace(/\s+/g, '-')}`;
             return idFromStored === catalog.id;
           });
-          if (savedCatalog?.filters?.genres?.length) {
-            const sortedGenres = [...savedCatalog.filters.genres]
-              .map(String)
-              .sort((a, b) => a.localeCompare(b));
-            sortedGenres.unshift('All');
-            catalog.extra = catalog.extra || [];
-            catalog.extra = catalog.extra.filter((e) => e.name !== 'genre');
-            catalog.extra.push({
-              name: 'genre',
-              options: sortedGenres,
-              optionsLimit: 1,
-            });
-          }
+          if (!savedCatalog) return;
+
+          const dropdownMode = getStremioExtraMode(
+            savedCatalog.filters as Record<string, unknown> | undefined,
+            GENRE_ONLY_STREMIO_EXTRA_MODES
+          );
+          if (dropdownMode !== 'genre') return;
+
+          const imdbGenres = await imdb.getGenres();
+          upsertGenreExtra(catalog, imdbGenres, savedCatalog.filters?.discoverOnly === true);
+          return;
+        }
+
+        if (catalog.id.startsWith('anilist-')) {
+          const savedCatalog = (config.catalogs || []).find((c) => {
+            const idFromStored = `anilist-${c._id || c.name.toLowerCase().replace(/\s+/g, '-')}`;
+            return idFromStored === catalog.id;
+          });
+          if (!savedCatalog) return;
+
+          const dropdownMode = getStremioExtraMode(
+            savedCatalog.filters as Record<string, unknown> | undefined,
+            GENRE_ONLY_STREMIO_EXTRA_MODES
+          );
+          if (dropdownMode !== 'genre') return;
+
+          upsertGenreExtra(
+            catalog,
+            [...anilist.getGenres()],
+            savedCatalog.filters?.discoverOnly === true
+          );
+          return;
+        }
+
+        if (catalog.id.startsWith('mal-')) {
+          const savedCatalog = (config.catalogs || []).find((c) => {
+            const idFromStored = `mal-${c._id || c.name.toLowerCase().replace(/\s+/g, '-')}`;
+            return idFromStored === catalog.id;
+          });
+          if (!savedCatalog) return;
+
+          const dropdownMode = getStremioExtraMode(
+            savedCatalog.filters as Record<string, unknown> | undefined,
+            GENRE_ONLY_STREMIO_EXTRA_MODES
+          );
+          if (dropdownMode !== 'genre') return;
+
+          upsertGenreExtra(
+            catalog,
+            mal.getGenres().map((genre) => genre.name),
+            savedCatalog.filters?.discoverOnly === true
+          );
+          return;
+        }
+
+        if (catalog.id.startsWith('simkl-')) {
+          const savedCatalog = (config.catalogs || []).find((c) => {
+            const idFromStored = `simkl-${c._id || c.name.toLowerCase().replace(/\s+/g, '-')}`;
+            return idFromStored === catalog.id;
+          });
+          if (!savedCatalog) return;
+
+          const dropdownMode = getStremioExtraMode(
+            savedCatalog.filters as Record<string, unknown> | undefined,
+            GENRE_ONLY_STREMIO_EXTRA_MODES
+          );
+          if (dropdownMode !== 'genre') return;
+
+          upsertGenreExtra(
+            catalog,
+            [...simkl.getGenres()],
+            savedCatalog.filters?.discoverOnly === true
+          );
+          return;
+        }
+
+        if (catalog.id.startsWith('trakt-')) {
+          const savedCatalog = (config.catalogs || []).find((c) => {
+            const idFromStored = `trakt-${c._id || c.name.toLowerCase().replace(/\s+/g, '-')}`;
+            return idFromStored === catalog.id;
+          });
+          if (!savedCatalog) return;
+
+          const dropdownMode = getStremioExtraMode(
+            savedCatalog.filters as Record<string, unknown> | undefined,
+            GENRE_ONLY_STREMIO_EXTRA_MODES
+          );
+          if (dropdownMode !== 'genre') return;
+
+          const traktGenresByType = await trakt.getGenresByType();
+          const scopedGenres =
+            catalog.type === 'series' ? traktGenresByType.series : traktGenresByType.movie;
+          upsertGenreExtra(
+            catalog,
+            scopedGenres.map((genre) => genre.name),
+            savedCatalog.filters?.discoverOnly === true
+          );
           return;
         }
 
@@ -400,7 +521,8 @@ export async function enrichManifestWithGenres(
           });
 
           const dropdownMode = getStremioExtraMode(
-            savedCatalog?.filters as Record<string, unknown> | undefined
+            savedCatalog?.filters as Record<string, unknown> | undefined,
+            TMDB_STREMIO_EXTRA_MODES
           );
           if (dropdownMode !== 'genre') {
             return;
@@ -492,18 +614,7 @@ export async function enrichManifestWithGenres(
         }
 
         if (options && options.length > 0) {
-          const sortedOptions = [...options].sort((a, b) => a.localeCompare(b));
-          sortedOptions.unshift('All');
-
-          catalog.extra = catalog.extra || [];
-          catalog.extra = catalog.extra.filter((e) => e.name !== 'genre');
-
-          catalog.extra.push({
-            name: 'genre',
-            options: sortedOptions,
-            optionsLimit: 1,
-            isRequired: isDiscoverOnly,
-          });
+          upsertGenreExtra(catalog, options, isDiscoverOnly);
         }
       } catch (err) {
         log.warn('Error injecting genre options into manifest catalog', {
@@ -535,7 +646,8 @@ export async function enrichManifestWithExtras(
     if (!savedCatalog) continue;
 
     const dropdownMode = getStremioExtraMode(
-      savedCatalog.filters as Record<string, unknown> | undefined
+      savedCatalog.filters as Record<string, unknown> | undefined,
+      TMDB_STREMIO_EXTRA_MODES
     );
     if (dropdownMode === 'genre') continue;
 

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Settings, Sparkles, Layers, Eye, Check } from 'lucide-react';
 import { FilterSection } from '../../FilterSection';
 import { GenreSelector } from '../../GenreSelector';
+import { StremioExtras } from '../../StremioExtras';
 import { SearchableSelect } from '../../../../forms/SearchableSelect';
 import { LabelWithTooltip } from '../../../../forms/Tooltip';
 import { AnimeFormatSelector } from '../../shared/AnimeFormatSelector';
@@ -226,6 +227,22 @@ export function SimklFilterPanel({
             />
           </label>
         </div>
+      </FilterSection>
+
+      <FilterSection
+        id="extras"
+        title="Stremio Extras"
+        description="Expose filter dropdowns inside Stremio"
+        icon={Layers}
+        isOpen={expandedSections?.extras}
+        onToggle={onToggleSection}
+        badgeCount={(filters.stremioExtras || []).length}
+      >
+        <StremioExtras
+          localCatalog={localCatalog}
+          onFiltersChange={onFiltersChange}
+          availableModes={['genre']}
+        />
       </FilterSection>
     </>
   );

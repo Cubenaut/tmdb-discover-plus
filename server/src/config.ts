@@ -21,6 +21,21 @@ const requireEnv = (key: string): string => {
   return value;
 };
 
+const addonVariant = env('ADDON_VARIANT');
+const isNightlyVariant = addonVariant === 'nightly';
+
+const envIntWithNightlyDefault = (
+  key: string,
+  standardFallback: number,
+  nightlyFallback: number
+): number => envInt(key, isNightlyVariant ? nightlyFallback : standardFallback);
+
+const envCsv = (key: string, fallback: string): string[] =>
+  env(key, fallback)
+    .split(',')
+    .map((s: string) => s.trim())
+    .filter(Boolean);
+
 export const config = Object.freeze({
   port: envInt('PORT', 7000),
   nodeEnv: env('NODE_ENV', 'production'),
@@ -58,17 +73,14 @@ export const config = Object.freeze({
   cache: Object.freeze({
     driver: env('CACHE_DRIVER'),
     redisUrl: env('REDIS_URL'),
-    maxKeys: envInt('CACHE_MAX_KEYS', 20000),
+    maxKeys: envIntWithNightlyDefault('CACHE_MAX_KEYS', 20000, 6000),
     versionOverride: env('CACHE_VERSION_OVERRIDE'),
-    warmRegions: env('CACHE_WARM_REGIONS', 'US,GB,DE,FR,ES')
-      .split(',')
-      .map((s: string) => s.trim())
-      .filter(Boolean),
+    warmRegions: envCsv('CACHE_WARM_REGIONS', isNightlyVariant ? 'US' : 'US,GB,DE,FR,ES'),
   }),
 
   tmdb: Object.freeze({
     apiKey: env('TMDB_API_KEY'),
-    rateLimit: envInt('TMDB_RATE_LIMIT', 35),
+    rateLimit: envIntWithNightlyDefault('TMDB_RATE_LIMIT', 35, 12),
     disableTlsVerify: envBool('DISABLE_TLS_VERIFY'),
     debug: envBool('DEBUG_TMDB'),
   }),
@@ -86,6 +98,7 @@ export const config = Object.freeze({
     apiHostHeader: env('IMDB_DATA_ATTR_H'),
     rateLimit: envInt('IMDB_DATA_RATE_LIMIT', 5),
     get enabled(): boolean {
+      if (isNightlyVariant) return false;
       const explicit = process.env['IMDB_DATA_ENABLED'];
       if (explicit) return explicit === 'true' || explicit === '1';
       return !!process.env['IMDB_DATA_KEY'];
@@ -145,7 +158,8 @@ export const config = Object.freeze({
   trustProxy: env('TRUST_PROXY', '1'),
 
   addon: Object.freeze({
-    variant: env('ADDON_VARIANT'),
+    variant: addonVariant,
+    isNightly: isNightlyVariant,
   }),
 });
 

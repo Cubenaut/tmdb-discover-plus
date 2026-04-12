@@ -24,10 +24,40 @@ vi.mock('../../src/config.ts', () => ({
 }));
 
 vi.mock('../../src/services/imdb/index.ts', () => ({
+  getGenres: vi.fn(async () => ['Action', 'Drama', 'Comedy']),
   isImdbApiEnabled: vi.fn(() => false),
 }));
 
+vi.mock('../../src/services/anilist/index.ts', () => ({
+  getGenres: vi.fn(() => ['Action', 'Adventure', 'Drama']),
+}));
+
+vi.mock('../../src/services/mal/index.ts', () => ({
+  getGenres: vi.fn(() => [
+    { id: 1, name: 'Action' },
+    { id: 2, name: 'Comedy' },
+  ]),
+}));
+
+vi.mock('../../src/services/simkl/index.ts', () => ({
+  getGenres: vi.fn(() => ['Action', 'Horror', 'Thriller']),
+}));
+
+vi.mock('../../src/services/trakt/index.ts', () => ({
+  getGenresByType: vi.fn(async () => ({
+    movie: [
+      { slug: 'action', name: 'Action' },
+      { slug: 'comedy', name: 'Comedy' },
+    ],
+    series: [
+      { slug: 'drama', name: 'Drama' },
+      { slug: 'documentary', name: 'Documentary' },
+    ],
+  })),
+}));
+
 import { buildManifest } from '../../src/services/manifestService.ts';
+import { enrichManifestWithGenres } from '../../src/services/manifestService.ts';
 import { enrichManifestWithExtras } from '../../src/services/manifestService.ts';
 import * as tmdb from '../../src/services/tmdb/index.ts';
 import { getApiKeyFromConfig } from '../../src/services/configService.ts';
@@ -253,5 +283,61 @@ describe('buildManifest', () => {
     expect(genreExtra?.options).toEqual(['All', 'FSK 16']);
     expect(genreExtra?.options).not.toContain('PG');
     expect(getCertificationsMock).toHaveBeenCalledWith('tmdb-key', 'movie');
+  });
+
+  it('adds genre extras for AniList catalogs', async () => {
+    const userConfig = {
+      userId: 'user-anilist',
+      catalogs: [
+        {
+          _id: 'anilist-genre',
+          name: 'AniList Genre Catalog',
+          type: 'series',
+          source: 'anilist',
+          enabled: true,
+          filters: {
+            stremioExtraMode: 'genre',
+          },
+        },
+      ],
+      preferences: { disableSearch: true },
+    };
+
+    const manifest = buildManifest(userConfig as any, baseUrl);
+    await enrichManifestWithGenres(manifest, userConfig as any);
+
+    const target = manifest.catalogs.find((c) => c.id === 'anilist-anilist-genre');
+    const genreExtra = target?.extra.find((e) => e.name === 'genre');
+
+    expect(genreExtra?.options).toEqual(['All', 'Action', 'Adventure', 'Drama']);
+    expect(genreExtra?.optionsLimit).toBe(1);
+  });
+
+  it('falls back to genre extras when unsupported mode is saved for Trakt', async () => {
+    const userConfig = {
+      userId: 'user-trakt',
+      catalogs: [
+        {
+          _id: 'trakt-genre',
+          name: 'Trakt Genre Catalog',
+          type: 'series',
+          source: 'trakt',
+          enabled: true,
+          filters: {
+            stremioExtraMode: 'year',
+          },
+        },
+      ],
+      preferences: { disableSearch: true },
+    };
+
+    const manifest = buildManifest(userConfig as any, baseUrl);
+    await enrichManifestWithGenres(manifest, userConfig as any);
+
+    const target = manifest.catalogs.find((c) => c.id === 'trakt-trakt-genre');
+    const genreExtra = target?.extra.find((e) => e.name === 'genre');
+
+    expect(genreExtra?.options).toEqual(['All', 'Documentary', 'Drama']);
+    expect(target?.extra.some((e) => e.name === 'year')).toBe(false);
   });
 });

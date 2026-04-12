@@ -192,8 +192,21 @@ jobs:
 
           cd ..
           sudo systemctl restart tmdb-nightly
-          sleep 3
-          curl -fsS http://localhost:7000/health > /dev/null
+          ok=0
+          for i in $(seq 1 45); do
+            if curl -fsS http://localhost:7000/health > /dev/null; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            echo "Health check failed after restart"
+            sudo systemctl status tmdb-nightly --no-pager || true
+            sudo journalctl -u tmdb-nightly -n 120 --no-pager || true
+            exit 1
+          fi
           echo "Nightly deploy completed on Oracle VM"
           EOF
 

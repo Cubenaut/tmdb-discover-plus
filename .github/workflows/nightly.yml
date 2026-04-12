@@ -210,22 +210,6 @@ jobs:
           echo "Nightly deploy completed on Oracle VM"
           EOF
 
-      - name: Setup SSH for BeamUp
-        if: ${{ false }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.BEAMUP_SSH_KEY }}" > ~/.ssh/beamup_key
-          chmod 600 ~/.ssh/beamup_key
-          ssh-keyscan -H a.baby-beamup.club >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Deploy to BeamUp
-        if: ${{ false }}
-        env:
-          GIT_SSH_COMMAND: 'ssh -i ~/.ssh/beamup_key -o StrictHostKeyChecking=no'
-        run: |
-          git remote add beamup dokku@a.baby-beamup.club:84f50d1c22e7-tmdb-discover-plus || true
-          git push beamup HEAD:main --force
-
       - name: Deployment Summary
         run: |
           echo "## 🌙 Nightly Deployment Complete" >> $GITHUB_STEP_SUMMARY

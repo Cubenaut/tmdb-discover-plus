@@ -24,11 +24,14 @@ import {
   parseIdArray,
   setNoCacheHeaders,
 } from '../utils/helpers.ts';
-import { stableStringify } from '../utils/stableStringify.ts';
 import { resolveDynamicDatePreset } from '../utils/dateHelpers.ts';
 import { SORT_OPTIONS } from '../services/tmdb/referenceData.ts';
 import { createLogger } from '../utils/logger.ts';
 import crypto from 'crypto';
+import {
+  buildImdbEnrichmentCacheKey,
+  buildPosterIntegrationScope,
+} from '../services/imdb/cacheKey.ts';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -352,32 +355,6 @@ function resolveStremioExtras(
   }
 }
 
-function buildImdbEnrichmentCacheKey(
-  type: ContentType,
-  listType: string,
-  filters: Record<string, unknown>,
-  searchParams: Record<string, unknown> | null,
-  skip: number,
-  posterService: string,
-  genre: string
-): string {
-  const genreSlug =
-    genre && genre !== 'All' ? genre.slice(0, 40).replace(/[^a-zA-Z0-9_-]/g, '_') : '';
-  if (listType === 'top250' || listType === 'popular') {
-    return `catalog-imdb:${type}:${listType}:${skip}:${posterService}`;
-  }
-  if (listType === 'imdb_list' && filters.imdbListId) {
-    const listId = String(filters.imdbListId).slice(0, 40);
-    return `catalog-imdb:imdb_list:${listId}:${skip}:${posterService}`;
-  }
-  const filterHash = crypto
-    .createHash('sha256')
-    .update(stableStringify(searchParams))
-    .digest('hex')
-    .slice(0, 20);
-  return `catalog-imdb:${type}:discover:${filterHash}:${skip}:${genreSlug}:${posterService}`;
-}
-
 async function handleImdbCatalogRequest(
   userId: string,
   type: ContentType,
@@ -404,6 +381,10 @@ async function handleImdbCatalogRequest(
     const posterOptions = buildPosterOptions(userConfig);
     const displayLanguage = userConfig.preferences?.defaultLanguage;
     const posterService = posterOptions?.service || 'none';
+    const posterIntegrationScope = buildPosterIntegrationScope(
+      posterOptions?.service,
+      posterOptions?.apiKey
+    );
     const cache = getCache();
 
     const computeEnrichedMetas = async (pageTitles: ImdbTitle[]): Promise<StremioMetaPreview[]> => {
@@ -567,7 +548,7 @@ async function handleImdbCatalogRequest(
       filters,
       searchParams,
       skip,
-      posterService,
+      posterIntegrationScope,
       extra.genre || ''
     );
 
@@ -640,7 +621,7 @@ async function handleImdbCatalogRequest(
         filters,
         searchParams,
         nextSkip,
-        posterService,
+        posterIntegrationScope,
         extra.genre || ''
       );
       cache

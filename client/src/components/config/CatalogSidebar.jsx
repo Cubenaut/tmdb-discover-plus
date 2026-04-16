@@ -128,6 +128,7 @@ export const CatalogSidebar = memo(function CatalogSidebar() {
           <button
             className="btn btn-secondary btn-sm sidebar-settings-btn"
             onClick={() => setShowSettingsModal(true)}
+            aria-label="Settings"
             title="Global Preferences"
           >
             <Settings size={16} />

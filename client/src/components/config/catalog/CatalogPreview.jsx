@@ -146,7 +146,18 @@ export const CatalogPreview = memo(function CatalogPreview({
     return (
       <div
         className="modal-overlay preview-modal-overlay"
-        onClick={onClose}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Close preview"
         style={{
           zIndex: 1000,
           position: 'fixed',
@@ -159,7 +170,6 @@ export const CatalogPreview = memo(function CatalogPreview({
       >
         <div
           className="preview-modal-container"
-          onClick={(e) => e.stopPropagation()}
           style={{
             position: 'relative',
             width: '100%',

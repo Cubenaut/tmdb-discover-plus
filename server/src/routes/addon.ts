@@ -45,6 +45,7 @@ import {
   sanitizeImdbFilters,
   sanitizeFiltersForSource,
 } from '../utils/validation.ts';
+import { buildCatalogExtraFromQuery, isNoSelectionGenre } from '../utils/catalogExtras.ts';
 import { sendError, ErrorCodes } from '../utils/AppError.ts';
 import {
   CACHE_TTLS,
@@ -210,7 +211,7 @@ async function resolveGenreFilter(
   type: string,
   apiKey: string
 ): Promise<void> {
-  if (!extra.genre || extra.genre === 'All') return;
+  if (isNoSelectionGenre(extra.genre)) return;
 
   try {
     const selected = String(extra.genre)
@@ -305,7 +306,7 @@ function resolveStremioExtras(
 ): void {
   const dropdownValue = extra.genre;
 
-  if (dropdownMode === 'year' && dropdownValue && dropdownValue !== 'All') {
+  if (dropdownMode === 'year' && !isNoSelectionGenre(dropdownValue)) {
     const year = parseInt(dropdownValue, 10);
     if (!isNaN(year)) {
       const isMovie = type === 'movie';
@@ -316,7 +317,7 @@ function resolveStremioExtras(
     }
   }
 
-  if (dropdownMode === 'sortBy' && dropdownValue && dropdownValue !== 'All') {
+  if (dropdownMode === 'sortBy' && !isNoSelectionGenre(dropdownValue)) {
     const catalogType = type === 'series' ? 'series' : 'movie';
     const sortOpts = SORT_OPTIONS[catalogType] || SORT_OPTIONS.movie;
     const match = sortOpts.find((s) => s.label === dropdownValue);
@@ -325,12 +326,12 @@ function resolveStremioExtras(
     }
   }
 
-  if (dropdownMode === 'certification' && dropdownValue && dropdownValue !== 'All') {
+  if (dropdownMode === 'certification' && !isNoSelectionGenre(dropdownValue)) {
     effectiveFilters.certification = dropdownValue;
   }
 
   // Backward compatibility for previously emitted multi-extra manifests
-  if (extra.year && extra.year !== 'All') {
+  if (!isNoSelectionGenre(extra.year)) {
     const year = parseInt(extra.year, 10);
     if (!isNaN(year)) {
       const isMovie = type === 'movie';
@@ -341,7 +342,7 @@ function resolveStremioExtras(
     }
   }
 
-  if (extra.sortBy && extra.sortBy !== 'All') {
+  if (!isNoSelectionGenre(extra.sortBy)) {
     const catalogType = type === 'series' ? 'series' : 'movie';
     const sortOpts = SORT_OPTIONS[catalogType] || SORT_OPTIONS.movie;
     const match = sortOpts.find((s) => s.label === extra.sortBy);
@@ -350,7 +351,7 @@ function resolveStremioExtras(
     }
   }
 
-  if (extra.certification && extra.certification !== 'All') {
+  if (!isNoSelectionGenre(extra.certification)) {
     effectiveFilters.certification = extra.certification;
   }
 }
@@ -490,7 +491,7 @@ async function handleImdbCatalogRequest(
     );
     const listType: string = (filters.listType as string) || 'discover';
     const effectiveFilters = { ...filters };
-    if (extra.genre && extra.genre !== 'All') {
+    if (!isNoSelectionGenre(extra.genre)) {
       effectiveFilters.genres = [extra.genre];
     }
 
@@ -1193,10 +1194,7 @@ router.get('/:userId/catalog/:type/:catalogId/:extra.json', async (req, res) => 
 
 router.get('/:userId/catalog/:type/:catalogId.json', async (req, res) => {
   const { userId, type, catalogId } = req.params;
-  const extra: Record<string, string> = {
-    skip: String(req.query.skip || '0'),
-    search: String(req.query.search || ''),
-  };
+  const extra = buildCatalogExtraFromQuery(req.query as Record<string, unknown>);
   await handleCatalogRequest(userId, type as ContentType, catalogId, extra, res, req);
 });
 

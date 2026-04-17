@@ -179,7 +179,40 @@ describe('buildManifest', () => {
     expect(genreExtra).toBeTruthy();
     expect(genreExtra?.options?.[0]).toBe('All');
     expect(genreExtra?.options).toContain(String(new Date().getFullYear()));
+    expect(genreExtra?.isRequired).toBe(false);
+    expect(target?.extra[0]?.name).toBe('genre');
+    expect(target?.extra[1]?.name).toBe('skip');
     expect(target?.extra.some((e) => e.name === 'year')).toBe(false);
+  });
+
+  it('preserves discoverOnly required flag for year mode', async () => {
+    const userConfig = {
+      userId: 'user-year-discover-only',
+      catalogs: [
+        {
+          _id: 'tmdb-year-discover-only',
+          name: 'Year Discover Only Catalog',
+          type: 'movie',
+          source: 'tmdb',
+          enabled: true,
+          filters: {
+            stremioExtraMode: 'year',
+            discoverOnly: true,
+          },
+        },
+      ],
+      preferences: { disableSearch: true },
+    };
+
+    const manifest = buildManifest(userConfig as any, baseUrl);
+    await enrichManifestWithExtras(manifest, userConfig as any);
+
+    const target = manifest.catalogs.find((c) => c.id === 'tmdb-tmdb-year-discover-only');
+    const genreExtra = target?.extra.find((e) => e.name === 'genre');
+
+    expect(genreExtra?.isRequired).toBe(true);
+    expect(target?.extra[0]?.name).toBe('genre');
+    expect(target?.extra[1]?.name).toBe('skip');
   });
 
   it('limits year options to selected range and excludes future years when releasedOnly is enabled', async () => {
@@ -243,6 +276,8 @@ describe('buildManifest', () => {
     expect(genreExtra).toBeTruthy();
     expect(genreExtra?.options?.[0]).toBe('All');
     expect(genreExtra?.options).toContain('Most Popular');
+    expect(target?.extra[0]?.name).toBe('genre');
+    expect(target?.extra[1]?.name).toBe('skip');
     expect(target?.extra.some((e) => e.name === 'sortBy')).toBe(false);
   });
 
@@ -281,6 +316,8 @@ describe('buildManifest', () => {
     const genreExtra = target?.extra.find((e) => e.name === 'genre');
 
     expect(genreExtra?.options).toEqual(['All', 'FSK 16']);
+    expect(target?.extra[0]?.name).toBe('genre');
+    expect(target?.extra[1]?.name).toBe('skip');
     expect(genreExtra?.options).not.toContain('PG');
     expect(getCertificationsMock).toHaveBeenCalledWith('tmdb-key', 'movie');
   });
@@ -311,6 +348,8 @@ describe('buildManifest', () => {
 
     expect(genreExtra?.options).toEqual(['All', 'Action', 'Adventure', 'Drama']);
     expect(genreExtra?.optionsLimit).toBe(1);
+    expect(target?.extra[0]?.name).toBe('genre');
+    expect(target?.extra[1]?.name).toBe('skip');
   });
 
   it('falls back to genre extras when unsupported mode is saved for Trakt', async () => {

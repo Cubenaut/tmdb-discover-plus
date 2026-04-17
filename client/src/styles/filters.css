@@ -74,8 +74,8 @@
 }
 
 .filter-section.expanded .filter-section-header {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
 }
 
 .filter-section-header:hover {

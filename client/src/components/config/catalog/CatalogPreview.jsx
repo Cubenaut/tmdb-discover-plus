@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef, memo } from 'react';
-import { Eye, Loader, RefreshCw, ImageOff, Star, CheckCircle, X } from 'lucide-react';
+import {
+  Eye,
+  Loader,
+  RefreshCw,
+  ImageOff,
+  Star,
+  CheckCircle,
+  X,
+  SearchX,
+  AlertCircle,
+} from 'lucide-react';
 import { PreviewGridSkeleton } from '../../layout/Skeleton';
 
 export const CatalogPreview = memo(function CatalogPreview({
@@ -23,6 +33,9 @@ export const CatalogPreview = memo(function CatalogPreview({
     }
     prevDataRef.current = data;
   }, [data]);
+
+  const hasData = data && Array.isArray(data.metas) && data.metas.length > 0;
+  const isCompactState = (!hasData && loading) || error || (!loading && !hasData);
 
   const content = (
     <div
@@ -55,15 +68,22 @@ export const CatalogPreview = memo(function CatalogPreview({
           </div>
 
           {loading && (
-            <div className="preview-loading">
-              <PreviewGridSkeleton count={10} />
-              <p className="preview-loading-text">Loading preview...</p>
+            <div className="preview-loading" style={{ textAlign: 'center', padding: '48px 12px' }}>
+              <Loader
+                size={32}
+                className="animate-spin text-secondary"
+                style={{ margin: '0 auto 16px auto', color: 'var(--accent-primary)' }}
+              />
+              <p className="preview-loading-text" style={{ margin: 0, fontSize: '0.875rem' }}>
+                Loading preview...
+              </p>
             </div>
           )}
 
           {!loading && error && (
-            <div className="preview-error">
-              <p>{error}</p>
+            <div className="preview-error" style={{ textAlign: 'center', padding: '24px 12px' }}>
+              <AlertCircle size={32} style={{ marginBottom: '12px', color: 'var(--error)' }} />
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.875rem' }}>{error}</p>
               <button className="btn btn-secondary" onClick={onRetry}>
                 <RefreshCw size={16} />
                 Retry
@@ -71,9 +91,18 @@ export const CatalogPreview = memo(function CatalogPreview({
             </div>
           )}
 
-          {!loading && !error && data && (
+          {!loading && !error && data && !hasData && (
+            <div className="preview-empty" style={{ textAlign: 'center', padding: '24px 12px' }}>
+              <SearchX size={32} style={{ marginBottom: '12px', opacity: 0.5 }} />
+              <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                No results found for the current filters.
+              </p>
+            </div>
+          )}
+
+          {!loading && !error && hasData && (
             <div className="preview-grid">
-              {(Array.isArray(data.metas) ? data.metas : []).map((item) => {
+              {data.metas.map((item) => {
                 const imdbId =
                   item.imdbId || item.imdb_id || (item.id?.startsWith('tt') ? item.id : null);
                 const tmdbId =
@@ -173,10 +202,11 @@ export const CatalogPreview = memo(function CatalogPreview({
           style={{
             position: 'relative',
             width: '100%',
-            maxWidth: '1000px',
+            maxWidth: isCompactState ? '400px' : '1000px',
             maxHeight: '90vh',
             display: 'flex',
             flexDirection: 'column',
+            transition: 'max-width 0.3s ease',
           }}
         >
           <button

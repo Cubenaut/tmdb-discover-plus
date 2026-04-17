@@ -161,19 +161,17 @@ export function useCatalogEditor() {
     setSelectedImdbCompanies(catalog?.formState?.selectedImdbCompanies || []);
     setSelectedImdbExcludeCompanies(catalog?.formState?.selectedImdbExcludeCompanies || []);
     setSelectedCity(catalog?.formState?.selectedCity || null);
-    if (catalog?.formState?.expandedSections) {
-      setExpandedSections(catalog.formState.expandedSections);
-    } else if (catalog) {
-      setExpandedSections({
-        basic: false,
-        genres: false,
-        filters: false,
-        release: false,
-        streaming: false,
-        people: false,
-        options: false,
-      });
-    }
+
+    // Always start with all sections collapsed, regardless of what was saved
+    setExpandedSections({
+      basic: false,
+      genres: false,
+      filters: false,
+      release: false,
+      streaming: false,
+      people: false,
+      options: false,
+    });
   }
 
   const {

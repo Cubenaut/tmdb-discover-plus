@@ -220,6 +220,10 @@
     gap: 8px;
   }
 
+  .active-filters-header {
+    gap: 8px;
+  }
+
   .active-filter-chip {
     padding: 4px 8px;
     font-size: 0.6875rem;

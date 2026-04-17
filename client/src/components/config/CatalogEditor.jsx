@@ -131,10 +131,10 @@ export const CatalogEditor = memo(function CatalogEditor() {
   } = handlers;
 
   const handlePreviewClick = async () => {
-    const success = await loadPreview();
-    if (success && isMobileSize) {
+    if (isMobileSize) {
       setIsPreviewModalOpen(true);
     }
+    await loadPreview();
   };
 
   if (!catalog) {
